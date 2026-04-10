@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<title>Meal Planner</title>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="MealPlan"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#faf8f5"/>
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiTWVhbCBQbGFubmVyIiwic2hvcnRfbmFtZSI6Ik1lYWxQbGFuIiwiZGVzY3JpcHRpb24iOiJQaWFubyBudXRyaXppb25hbGUgc2V0dGltYW5hbGUiLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2ZhZjhmNSIsInRoZW1lX2NvbG9yIjoiIzJhMjUyMCJ9"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700;9..144,800&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch}
+body{font-family:'DM Sans',system-ui,sans-serif;background:linear-gradient(180deg,#faf8f5 0%,#f5f1ec 100%);color:#2a2520;min-height:100%;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+button,select{font-family:inherit;-webkit-appearance:none}
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;cursor:pointer;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
+::-webkit-scrollbar{display:none}
+@media print{.no-print{display:none!important}body{background:#fff!important;padding:12px!important}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.10/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useMemo,useCallback,useEffect}=React;
+
+/* ══════════════════ CONSTANTS ══════════════════ */
+const CAT={prot:"🥩 Proteine",latt:"🥛 Latticini",cer:"🌾 Cereali & Pane",fv:"🥦 Frutta & Verdura",cond:"🫒 Condimenti & Dispensa",surgelati:"❄️ Surgelati & Altro"};
+const DN=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
+const DS=["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
+const DE=["🌿","🔥","🌻","💜","🎉","☀️","🫒"];
+const DC=["#4A7C59","#C4563A","#D4A13A","#7B5EA7","#E07B9B","#E8943A","#5B8A72"];
+const DCL=["#E8F0E4","#FAEAE6","#FBF3E0","#F0EBF7","#FDF0F3","#FFF4E6","#E6F2EC"];
+const MM={colazione:{icon:"🌅",label:"Colazione"},spuntino1:{icon:"🍎",label:"Spuntino"},pranzo:{icon:"🍽️",label:"Pranzo"},spuntino2:{icon:"🥤",label:"Merenda"},cena:{icon:"🌙",label:"Cena"}};
+const SAVE_SEL="mp_sel_v2";
+const SAVE_PROF="mp_prof_v2";
+
+const ACT_LEVELS=[
+  {id:"sed",label:"Sedentario",desc:"Ufficio, poco movimento",factor:1.2},
+  {id:"light",label:"Leggero",desc:"1-2 allenamenti/sett",factor:1.375},
+  {id:"mod",label:"Moderato",desc:"2-3 allenamenti/sett",factor:1.55},
+  {id:"active",label:"Attivo",desc:"4-5 allenamenti/sett",factor:1.725},
+  {id:"very",label:"Molto attivo",desc:"6-7 allenamenti/sett",factor:1.9},
+];
+
+const DEF_LEVELS=[
+  {id:"gentle",label:"Dolce",desc:"-15% · ~0,3-0,5 kg/sett",pct:0.15},
+  {id:"moderate",label:"Moderato",desc:"-20% · ~0,5-0,7 kg/sett",pct:0.20},
+  {id:"aggressive",label:"Deciso",desc:"-25% · ~0,7-1,0 kg/sett",pct:0.25},
+];
+
+const defaultProfile={sex:"F",age:22,height:175,weight:85,activity:"mod",deficit:"moderate",goalWeight:65};
+
+/* ══════════════════ MEAL DATABASE ══════════════════ */
+const OPTIONS={
+  colazione:[
+    {id:"c1",title:"Bowl Energetica",items:["Yogurt greco 0% (170g)","Avena (50g) + cannella","Mirtilli freschi (100g)","Granella di noci (10g)"],kcal:430,p:26,c:52,g:11,tip:"Overnight oats la sera prima!",shop:[{cat:"latt",item:"Yogurt greco 0%",qty:"170g"},{cat:"cer",item:"Fiocchi d'avena",qty:"50g"},{cat:"fv",item:"Mirtilli freschi",qty:"100g"},{cat:"cond",item:"Noci",qty:"10g"}]},
+    {id:"c2",title:"Pancake Proteici",items:["2 pancake (avena 40g + 1 uovo + banana)","Yogurt greco (80g)","Fragole (80g)"],kcal:420,p:24,c:55,g:10,tip:"Vaniglia nell'impasto!",shop:[{cat:"cer",item:"Fiocchi d'avena",qty:"40g"},{cat:"prot",item:"Uova",qty:"1"},{cat:"fv",item:"Banana",qty:"1"},{cat:"latt",item:"Yogurt greco",qty:"80g"},{cat:"fv",item:"Fragole",qty:"80g"}]},
+    {id:"c3",title:"Toast & Uova",items:["Pane integrale (2 fette)","Uova strapazzate (2)","Pomodoro fresco","Avocado (30g)"],kcal:440,p:22,c:38,g:20,tip:"Fuoco basso per uova cremose.",shop:[{cat:"cer",item:"Pane integrale",qty:"60g"},{cat:"prot",item:"Uova",qty:"2"},{cat:"fv",item:"Pomodoro fresco",qty:"1"},{cat:"fv",item:"Avocado",qty:"30g"}]},
+    {id:"c4",title:"Smoothie Bowl",items:["Banana congelata + frutti di bosco","Latte vegetale (100ml)","Whey (20g)","Granola (25g)"],kcal:410,p:24,c:56,g:9,tip:"Banana congelata = gelato.",shop:[{cat:"fv",item:"Banana",qty:"1"},{cat:"fv",item:"Frutti di bosco",qty:"120g"},{cat:"latt",item:"Latte vegetale",qty:"100ml"},{cat:"cond",item:"Proteine whey",qty:"20g"},{cat:"cer",item:"Granola",qty:"25g"}]},
+    {id:"c5",title:"Porridge Classico",items:["Avena (50g) nel latte (150ml)","1 mela + cannella","Burro d'arachidi (12g)","Semi di chia (5g)"],kcal:440,p:16,c:58,g:16,tip:"Fuoco lento mescolando.",shop:[{cat:"cer",item:"Fiocchi d'avena",qty:"50g"},{cat:"latt",item:"Latte",qty:"150ml"},{cat:"fv",item:"Mela",qty:"1"},{cat:"cond",item:"Burro d'arachidi",qty:"12g"},{cat:"cond",item:"Semi di chia",qty:"5g"}]},
+    {id:"c6",title:"Brunch Salmone",items:["2 uova in camicia","Pane tostato (1 fetta)","Salmone affumicato (40g)","Avocado (40g)"],kcal:480,p:30,c:28,g:26,tip:"Acqua+aceto, 3 min.",shop:[{cat:"prot",item:"Uova",qty:"2"},{cat:"cer",item:"Pane integrale",qty:"30g"},{cat:"prot",item:"Salmone affumicato",qty:"40g"},{cat:"fv",item:"Avocado",qty:"40g"}]},
+  ],
+  spuntino1:[
+    {id:"s1a",title:"Mela & Mandorle",items:["1 mela","Mandorle (20g)"],kcal:155,p:4,c:20,g:8,shop:[{cat:"fv",item:"Mela",qty:"1"},{cat:"cond",item:"Mandorle",qty:"20g"}]},
+    {id:"s1b",title:"Kiwi & Noci",items:["1 kiwi","Noci (15g)"],kcal:140,p:3,c:16,g:8,shop:[{cat:"fv",item:"Kiwi",qty:"1"},{cat:"cond",item:"Noci",qty:"15g"}]},
+    {id:"s1c",title:"Banana & Arachidi",items:["1 banana","Burro d'arachidi (10g)"],kcal:180,p:4,c:28,g:6,tip:"Anche come pre-workout.",shop:[{cat:"fv",item:"Banana",qty:"1"},{cat:"cond",item:"Burro d'arachidi",qty:"10g"}]},
+    {id:"s1d",title:"Pera & Frutta Secca",items:["1 pera","Mix frutta secca (15g)"],kcal:160,p:3,c:22,g:8,shop:[{cat:"fv",item:"Pera",qty:"1"},{cat:"cond",item:"Mix frutta secca",qty:"15g"}]},
+    {id:"s1e",title:"Agrumi Light",items:["1 arancia o 2 mandarini"],kcal:70,p:1,c:16,g:0,shop:[{cat:"fv",item:"Arance/Mandarini",qty:"2"}]},
+    {id:"s1f",title:"Frullato Fresco",items:["Banana + latte vegetale + cacao"],kcal:160,p:4,c:30,g:4,shop:[{cat:"fv",item:"Banana",qty:"1"},{cat:"latt",item:"Latte vegetale",qty:"150ml"},{cat:"cond",item:"Cacao amaro",qty:"5g"}]},
+  ],
+  pranzo:[
+    {id:"p1",title:"Power Bowl Mediterranea",items:["Pollo grigliato (160g)","Farro (70g crudo)","Pomodorini, rucola, olive","Olio EVO (10ml)"],kcal:560,p:44,c:52,g:16,tip:"Griglia pollo per 2-3 giorni.",shop:[{cat:"prot",item:"Petto di pollo",qty:"160g"},{cat:"cer",item:"Farro",qty:"70g"},{cat:"fv",item:"Pomodorini",qty:"100g"},{cat:"fv",item:"Rucola",qty:"50g"},{cat:"cond",item:"Olio EVO",qty:"10ml"}]},
+    {id:"p2",title:"Pasta Ragù Tacchino",items:["Pasta integrale (80g)","Ragù tacchino (120g)","Passata, basilico","Parmigiano (10g)"],kcal:570,p:42,c:60,g:15,tip:"Ragù in batch: congela.",shop:[{cat:"cer",item:"Pasta integrale",qty:"80g"},{cat:"prot",item:"Macinato di tacchino",qty:"120g"},{cat:"cond",item:"Passata di pomodoro",qty:"100ml"},{cat:"latt",item:"Parmigiano",qty:"10g"}]},
+    {id:"p3",title:"Zuppa Legumi & Cereali",items:["Lenticchie (80g secche)","Orzo (40g crudo)","Olio EVO (10ml)","Crostini integrali"],kcal:530,p:28,c:72,g:12,tip:"Pentola a pressione: 20 min.",shop:[{cat:"prot",item:"Lenticchie secche",qty:"80g"},{cat:"cer",item:"Orzo",qty:"40g"},{cat:"fv",item:"Carote",qty:"1"},{cat:"fv",item:"Sedano",qty:"1"},{cat:"cond",item:"Olio EVO",qty:"10ml"}]},
+    {id:"p4",title:"Wrap di Tacchino",items:["Piadina integrale","Tacchino (120g)","Lattuga, hummus (30g)","Olio EVO (5ml)"],kcal:520,p:38,c:48,g:18,tip:"Hummus = grassi buoni + sapore.",shop:[{cat:"cer",item:"Piadina integrale",qty:"1"},{cat:"prot",item:"Petto di tacchino",qty:"120g"},{cat:"fv",item:"Lattuga",qty:"50g"},{cat:"cond",item:"Hummus",qty:"30g"}]},
+    {id:"p5",title:"Risotto Zafferano",items:["Riso carnaroli (70g)","Brodo + zafferano","Parmigiano (15g)","Insalata verde"],kcal:440,p:14,c:62,g:14,shop:[{cat:"cer",item:"Riso carnaroli",qty:"70g"},{cat:"cond",item:"Brodo vegetale",qty:"250ml"},{cat:"cond",item:"Zafferano",qty:"1 bustina"},{cat:"latt",item:"Parmigiano",qty:"15g"},{cat:"fv",item:"Insalata mista",qty:"100g"}]},
+    {id:"p6",title:"Pasta e Ceci",items:["Pasta mista (60g) + ceci (100g)","Pomodoro, rosmarino","Olio EVO (10ml)","Verdure grigliate"],kcal:530,p:24,c:68,g:16,tip:"Comfort food che nutre.",shop:[{cat:"cer",item:"Pasta mista",qty:"60g"},{cat:"prot",item:"Ceci (barattolo)",qty:"100g"},{cat:"cond",item:"Passata di pomodoro",qty:"80ml"},{cat:"cond",item:"Olio EVO",qty:"10ml"},{cat:"fv",item:"Verdure miste",qty:"200g"}]},
+    {id:"p7",title:"Insalatona Proteica",items:["Tonno (120g)","Verdure fresche (250g)","Ceci (60g)","Olio EVO + balsamico"],kcal:420,p:40,c:24,g:16,tip:"Perfetta per il buffer.",shop:[{cat:"prot",item:"Tonno in scatola",qty:"120g"},{cat:"fv",item:"Insalata mista",qty:"150g"},{cat:"prot",item:"Ceci (barattolo)",qty:"60g"},{cat:"cond",item:"Olio EVO",qty:"8ml"}]},
+  ],
+  spuntino2:[
+    {id:"s2a",title:"Fiocchi di Latte & Cacao",items:["Fiocchi di latte (150g)","Cacao amaro + miele"],kcal:170,p:22,c:12,g:4,shop:[{cat:"latt",item:"Fiocchi di latte",qty:"150g"},{cat:"cond",item:"Cacao amaro",qty:"5g"},{cat:"cond",item:"Miele",qty:"5g"}]},
+    {id:"s2b",title:"Shake Proteico",items:["Whey (30g) + acqua","1 frutto"],kcal:200,p:28,c:16,g:2,shop:[{cat:"cond",item:"Proteine whey",qty:"30g"},{cat:"fv",item:"Frutto di stagione",qty:"1"}]},
+    {id:"s2c",title:"Ricotta Light Dolce",items:["Ricotta light (100g)","Miele + cannella"],kcal:140,p:14,c:14,g:4,shop:[{cat:"latt",item:"Ricotta light",qty:"100g"},{cat:"cond",item:"Miele",qty:"8g"}]},
+    {id:"s2d",title:"Yogurt & Frutta Secca",items:["Yogurt greco (125g)","Mix frutta secca (15g)"],kcal:170,p:16,c:10,g:8,shop:[{cat:"latt",item:"Yogurt greco",qty:"125g"},{cat:"cond",item:"Mix frutta secca",qty:"15g"}]},
+    {id:"s2e",title:"Cioccolato Fondente",items:["2 quadratini cioccolato 80%","Caffè o tè"],kcal:110,p:2,c:8,g:8,shop:[{cat:"cond",item:"Cioccolato fondente 80%",qty:"20g"}]},
+    {id:"s2f",title:"Budino Proteico",items:["1 budino proteico"],kcal:130,p:15,c:12,g:3,shop:[{cat:"surgelati",item:"Budino proteico",qty:"1"}]},
+  ],
+  cena:[
+    {id:"d1",title:"Salmone & Verdure",items:["Salmone (150g)","Patate dolci (120g)","Broccoletti (200g)","Olio EVO (10ml)"],kcal:590,p:38,c:42,g:24,tip:"Soia+miele+zenzero.",shop:[{cat:"prot",item:"Filetto di salmone",qty:"150g"},{cat:"fv",item:"Patate dolci",qty:"120g"},{cat:"fv",item:"Broccoletti",qty:"200g"},{cat:"cond",item:"Olio EVO",qty:"10ml"}]},
+    {id:"d2",title:"Poke Bowl Casalinga",items:["Tonno fresco (140g)","Riso basmati (60g)","Edamame, avocado","Soia + sesamo"],kcal:560,p:40,c:48,g:20,tip:"Perfetta per avanzi.",shop:[{cat:"prot",item:"Tonno fresco",qty:"140g"},{cat:"cer",item:"Riso basmati",qty:"60g"},{cat:"surgelati",item:"Edamame",qty:"50g"},{cat:"fv",item:"Avocado",qty:"30g"}]},
+    {id:"d3",title:"Orata al Cartoccio",items:["Orata (180g)","Patate + pomodorini","Verdure miste","Olio EVO (10ml)"],kcal:550,p:40,c:36,g:22,tip:"Zero padelle!",shop:[{cat:"prot",item:"Orata",qty:"180g"},{cat:"fv",item:"Patate",qty:"100g"},{cat:"fv",item:"Pomodorini",qty:"50g"},{cat:"fv",item:"Verdure miste",qty:"200g"},{cat:"cond",item:"Olio EVO",qty:"10ml"}]},
+    {id:"d4",title:"Stir-Fry Gamberi",items:["Gamberi (160g)","Noodles di riso (60g)","Verdure wok","Teriyaki + sesamo"],kcal:520,p:36,c:52,g:12,tip:"Wok alta fiamma 3-4 min.",shop:[{cat:"surgelati",item:"Gamberi sgusciati",qty:"160g"},{cat:"cer",item:"Noodles di riso",qty:"60g"},{cat:"fv",item:"Peperoni",qty:"100g"},{cat:"fv",item:"Zucchine",qty:"100g"},{cat:"cond",item:"Salsa teriyaki",qty:"15ml"}]},
+    {id:"d5",title:"Tagliata di Manzo",items:["Tagliata (150g)","Rucola + grana (10g)","Olio EVO + limone","Pane (30g)"],kcal:580,p:46,c:20,g:34,tip:"2 min/lato, riposo 5 min.",shop:[{cat:"prot",item:"Tagliata di manzo",qty:"150g"},{cat:"fv",item:"Rucola",qty:"50g"},{cat:"latt",item:"Grana Padano",qty:"10g"},{cat:"cer",item:"Pane casereccio",qty:"30g"},{cat:"cond",item:"Olio EVO",qty:"10ml"}]},
+    {id:"d6",title:"Frittata Verdure",items:["3 uova + 1 albume","Zucchine, peperoni, cipolla","Insalata + olio EVO","Pane integrale (30g)"],kcal:520,p:34,c:26,g:28,tip:"Falla grande: avanzi domani.",shop:[{cat:"prot",item:"Uova",qty:"4"},{cat:"fv",item:"Zucchine",qty:"100g"},{cat:"fv",item:"Peperoni",qty:"50g"},{cat:"cer",item:"Pane integrale",qty:"30g"},{cat:"cond",item:"Olio EVO",qty:"10ml"}]},
+    {id:"d7",title:"Pollo al Curry",items:["Pollo (160g)","Cocco light + curry","Riso basmati (60g)","Spinacini (100g)"],kcal:560,p:42,c:50,g:18,tip:"Da ristorante in 20 min.",shop:[{cat:"prot",item:"Petto di pollo",qty:"160g"},{cat:"cond",item:"Latte di cocco light",qty:"60ml"},{cat:"cond",item:"Curry in polvere",qty:"3g"},{cat:"cer",item:"Riso basmati",qty:"60g"},{cat:"fv",item:"Spinacini freschi",qty:"100g"}]},
+  ],
+  social:[
+    {id:"soc1",title:"🥂 Ristorante",items:["Proteina + verdura come base","Il piatto che desideri","1-2 drink o dolce","Scegli UNO extra"],kcal:1200,p:45,c:100,g:50,tip:"Spuntino proteico prima.",shop:[]},
+    {id:"soc2",title:"🍕 Pizza Night",items:["1 pizza margherita/vegetariana","Insalata antipasto","1 birra o vino"],kcal:1100,p:35,c:120,g:40,tip:"Lunga lievitazione = più digeribile.",shop:[]},
+    {id:"soc3",title:"🍣 Sushi",items:["10-12 pezzi nigiri/maki","Edamame","1 birra o tè"],kcal:950,p:40,c:110,g:20,tip:"Già bilanciato!",shop:[]},
+    {id:"soc4",title:"🍷 Aperitivo",items:["Spritz/vino (1-2)","Formaggi e salumi (80g)","Grissini (30g)"],kcal:800,p:25,c:40,g:40,tip:"Alterna drink e acqua.",shop:[]},
+    {id:"soc5",title:"🍝 Trattoria",items:["Un primo","Contorno verdure","1 calice vino","Caffè"],kcal:900,p:28,c:90,g:30,tip:"Il primo è sacro.",shop:[]},
+  ]
+};
+const SOC_COL=[
+  {id:"sc1",title:"Buffer Light",items:["Yogurt greco 0% (150g)","Frutti di bosco (100g)","Miele"],kcal:180,p:18,c:22,g:2,tip:"Leggera e proteica.",shop:[{cat:"latt",item:"Yogurt greco 0%",qty:"150g"},{cat:"fv",item:"Frutti di bosco",qty:"100g"}]},
+  {id:"sc2",title:"Caffè & Frutta",items:["1 caffè","1 banana","Yogurt (100g)"],kcal:200,p:12,c:32,g:3,shop:[{cat:"fv",item:"Banana",qty:"1"},{cat:"latt",item:"Yogurt greco",qty:"100g"}]},
+];
+const SOC_S1=[
+  {id:"ss1a",title:"Agrumi",items:["1 arancia"],kcal:70,p:1,c:16,g:0,shop:[{cat:"fv",item:"Arance",qty:"1"}]},
+  {id:"ss1b",title:"Caffè & Biscotto",items:["1 caffè","1 biscotto integrale"],kcal:80,p:1,c:14,g:2,shop:[{cat:"cer",item:"Biscotti integrali",qty:"1"}]},
+];
+const SOC_PR=[
+  {id:"sp1",title:"Insalatona Buffer",items:["Tonno (120g)","Verdure (250g)","Ceci (60g)","Olio EVO (8ml)"],kcal:420,p:40,c:24,g:16,tip:"Proteico+leggero=spazio sera.",shop:[{cat:"prot",item:"Tonno in scatola",qty:"120g"},{cat:"fv",item:"Insalata mista",qty:"150g"},{cat:"prot",item:"Ceci (barattolo)",qty:"60g"},{cat:"cond",item:"Olio EVO",qty:"8ml"}]},
+  {id:"sp2",title:"Pollo & Verdure Steam",items:["Pollo (150g)","Verdure vapore (250g)","Olio EVO (5ml)"],kcal:350,p:42,c:10,g:12,shop:[{cat:"prot",item:"Petto di pollo",qty:"150g"},{cat:"fv",item:"Verdure miste",qty:"250g"},{cat:"cond",item:"Olio EVO",qty:"5ml"}]},
+];
+const SOC_S2=[
+  {id:"ss2a",title:"Pre-Uscita",items:["1 uovo sodo o yogurt (100g)"],kcal:90,p:10,c:2,g:5,tip:"Mai affamata!",shop:[{cat:"prot",item:"Uova",qty:"1"}]},
+  {id:"ss2b",title:"Shake Leggero",items:["Whey (20g) + acqua"],kcal:80,p:18,c:1,g:1,shop:[{cat:"cond",item:"Proteine whey",qty:"20g"}]},
+];
+
+/* ══════════════════ CALCULATOR ══════════════════ */
+function calcBMR(p){
+  const base=10*p.weight+6.25*p.height-5*p.age;
+  return Math.round(p.sex==="M"?base+5:base-161);
+}
+function calcTDEE(p){
+  const act=ACT_LEVELS.find(a=>a.id===p.activity)||ACT_LEVELS[2];
+  return Math.round(calcBMR(p)*act.factor);
+}
+function calcTarget(p){
+  const def=DEF_LEVELS.find(d=>d.id===p.deficit)||DEF_LEVELS[1];
+  return Math.round(calcTDEE(p)*(1-def.pct));
+}
+function calcMacros(p){
+  const target=calcTarget(p);
+  const protG=Math.round(p.weight*1.8);
+  const fatG=Math.round(p.weight*0.9);
+  const protKcal=protG*4;const fatKcal=fatG*9;
+  const carbKcal=Math.max(target-protKcal-fatKcal,200);
+  const carbG=Math.round(carbKcal/4);
+  return{target,protG,fatG,carbG,protKcal,fatKcal,carbKcal};
+}
+
+/* ══════════════════ HELPERS ══════════════════ */
+function find(pool,id){return pool.find(m=>m.id===id)||pool[0]}
+function loadProf(){try{const s=localStorage.getItem(SAVE_PROF);if(s)return{...defaultProfile,...JSON.parse(s)}}catch(e){}return{...defaultProfile}}
+function initSel(){try{const s=localStorage.getItem(SAVE_SEL);if(s){const p=JSON.parse(s);if(p&&p[0])return p}}catch(e){}const s={};DN.forEach((_,i)=>{s[i]={social:false,colazione:OPTIONS.colazione[i%6].id,spuntino1:OPTIONS.spuntino1[i%6].id,pranzo:OPTIONS.pranzo[i%7].id,spuntino2:OPTIONS.spuntino2[i%6].id,cena:OPTIONS.cena[i%7].id,socialCena:OPTIONS.social[0].id,socialColazione:SOC_COL[0].id,socialSpuntino1:SOC_S1[0].id,socialPranzo:SOC_PR[0].id,socialSpuntino2:SOC_S2[0].id}});return s}
+function gm(sel,i){const s=sel[i];if(s.social)return{colazione:find(SOC_COL,s.socialColazione),spuntino1:find(SOC_S1,s.socialSpuntino1),pranzo:find(SOC_PR,s.socialPranzo),spuntino2:find(SOC_S2,s.socialSpuntino2),cena:find(OPTIONS.social,s.socialCena)};return{colazione:find(OPTIONS.colazione,s.colazione),spuntino1:find(OPTIONS.spuntino1,s.spuntino1),pranzo:find(OPTIONS.pranzo,s.pranzo),spuntino2:find(OPTIONS.spuntino2,s.spuntino2),cena:find(OPTIONS.cena,s.cena)}}
+function dkc(sel,i){return Object.values(gm(sel,i)).reduce((s,m)=>s+m.kcal,0)}
+function buildShop(sel){const map={};for(let i=0;i<7;i++){Object.values(gm(sel,i)).forEach(m=>{(m.shop||[]).forEach(({cat,item})=>{const k=cat+"||"+item;if(!map[k])map[k]={cat,item,days:[]};map[k].days.push(DS[i])})})}const g={};Object.values(map).forEach(e=>{if(!g[e.cat])g[e.cat]=[];g[e.cat].push(e)});return g}
+
+/* ══════════════════ COMPONENTS ══════════════════ */
+function Pill({label,value,unit,color}){return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:color+"18",color,padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>{label} <b>{value}</b>{unit}</span>}
+
+function Slider({label,value,min,max,step,unit,color,onChange}){
+  return(
+    <div style={{marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+        <span style={{fontSize:13,fontWeight:600,color:"#5a5550"}}>{label}</span>
+        <span style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,color:color||"#2a2520"}}>{value}<span style={{fontSize:12,fontWeight:500,color:"#8a8580"}}> {unit}</span></span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(Number(e.target.value))}
+        style={{background:`linear-gradient(to right,${color||"#4A7C59"} 0%,${color||"#4A7C59"} ${((value-min)/(max-min))*100}%,#e8e4de ${((value-min)/(max-min))*100}%,#e8e4de 100%)`}}
+      />
+      <style>{`input[type=range]::-webkit-slider-thumb{background:${color||"#4A7C59"}}`}</style>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#b0a89e",marginTop:3}}>
+        <span>{min}{unit}</span><span>{max}{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+function OptionBtns({options,value,onChange,color}){
+  return(
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {options.map(o=>(
+        <button key={o.id} onClick={()=>onChange(o.id)} style={{flex:1,minWidth:90,padding:"10px 8px",borderRadius:12,border:value===o.id?`2px solid ${color}`:"2px solid #e8e4de",background:value===o.id?color+"12":"#fff",cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
+          <div style={{fontSize:13,fontWeight:700,color:value===o.id?color:"#5a5550"}}>{o.label}</div>
+          <div style={{fontSize:10,color:"#8a8580",marginTop:2}}>{o.desc}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProfilePanel({profile,setProfile}){
+  const p=profile;const set=(k,v)=>setProfile(prev=>({...prev,[k]:v}));
+  const bmr=calcBMR(p);const tdee=calcTDEE(p);const{target,protG,fatG,carbG}=calcMacros(p);
+  const timeToGoal=p.weight>p.goalWeight?Math.round((p.weight-p.goalWeight)/((DEF_LEVELS.find(d=>d.id===p.deficit)||DEF_LEVELS[1]).pct*tdee/7700)):0;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Results card */}
+      <div style={{background:"linear-gradient(135deg,#2a2520,#4a4540)",borderRadius:20,padding:"20px",color:"#fff",boxShadow:"0 8px 30px rgba(42,37,32,0.3)"}}>
+        <div style={{fontSize:10,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",opacity:0.6,marginBottom:8}}>Il tuo fabbisogno calcolato</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:14}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:10,opacity:0.5}}>BMR</div>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700}}>{bmr}</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:10,opacity:0.5}}>TDEE</div>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700}}>{tdee}</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:10,opacity:0.5}}>TARGET</div>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:800,color:"#7dd3a8"}}>{target}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.1)"}}>
+          <Pill label="P" value={protG} unit="g" color="#E07B5B"/>
+          <Pill label="C" value={carbG} unit="g" color="#D4A13A"/>
+          <Pill label="G" value={fatG} unit="g" color="#5B8A72"/>
+        </div>
+        {timeToGoal>0&&<div style={{textAlign:"center",marginTop:12,fontSize:12,opacity:0.7}}>
+          Obiettivo {p.goalWeight} kg raggiungibile in circa <strong style={{color:"#7dd3a8"}}>{timeToGoal} settimane</strong> (~{Math.round(timeToGoal/4.3)} mesi)
+        </div>}
+      </div>
+
+      {/* Sex */}
+      <div style={{background:"#fff",borderRadius:16,padding:"16px",border:"1.5px solid #f0ede8"}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Sesso biologico</div>
+        <div style={{display:"flex",gap:8}}>
+          {[{id:"F",label:"👩 Donna"},{id:"M",label:"👨 Uomo"}].map(s=>(
+            <button key={s.id} onClick={()=>set("sex",s.id)} style={{flex:1,padding:"12px",borderRadius:12,border:p.sex===s.id?"2px solid #7B5EA7":"2px solid #e8e4de",background:p.sex===s.id?"#F0EBF7":"#fff",fontSize:15,fontWeight:700,color:p.sex===s.id?"#7B5EA7":"#8a8580",cursor:"pointer",transition:"all 0.2s"}}>{s.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sliders */}
+      <div style={{background:"#fff",borderRadius:16,padding:"16px",border:"1.5px solid #f0ede8"}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Dati antropometrici</div>
+        <Slider label="Età" value={p.age} min={16} max={70} step={1} unit="anni" color="#7B5EA7" onChange={v=>set("age",v)}/>
+        <Slider label="Altezza" value={p.height} min={140} max={210} step={1} unit="cm" color="#4A7C59" onChange={v=>set("height",v)}/>
+        <Slider label="Peso attuale" value={p.weight} min={40} max={180} step={0.5} unit="kg" color="#C4563A" onChange={v=>set("weight",v)}/>
+        <Slider label="Peso obiettivo" value={p.goalWeight} min={40} max={150} step={0.5} unit="kg" color="#E07B9B" onChange={v=>set("goalWeight",v)}/>
+      </div>
+
+      {/* Activity */}
+      <div style={{background:"#fff",borderRadius:16,padding:"16px",border:"1.5px solid #f0ede8"}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Livello di attività</div>
+        <OptionBtns options={ACT_LEVELS} value={p.activity} onChange={v=>set("activity",v)} color="#E8943A"/>
+      </div>
+
+      {/* Deficit */}
+      <div style={{background:"#fff",borderRadius:16,padding:"16px",border:"1.5px solid #f0ede8"}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Intensità del deficit</div>
+        <OptionBtns options={DEF_LEVELS} value={p.deficit} onChange={v=>set("deficit",v)} color="#C4563A"/>
+      </div>
+
+      {/* Formula info */}
+      <div style={{background:"#fff",borderRadius:16,padding:"14px 16px",border:"1px dashed #e0dbd4"}}>
+        <div style={{fontSize:12,color:"#8a8580",lineHeight:1.6}}>
+          <strong style={{color:"#5a5550"}}>📐 Formula utilizzata:</strong> Mifflin-St Jeor (gold standard clinico)
+          <br/>BMR = 10×peso + 6,25×altezza − 5×età {p.sex==="M"?"+ 5":"− 161"}
+          <br/>TDEE = BMR × {(ACT_LEVELS.find(a=>a.id===p.activity)||ACT_LEVELS[2]).factor} (fattore attività)
+          <br/>Target = TDEE − {Math.round((DEF_LEVELS.find(d=>d.id===p.deficit)||DEF_LEVELS[1]).pct*100)}%
+          <br/><br/><em style={{color:"#b0a89e"}}>Aggiorna il peso ogni 2-4 settimane per ricalcolare automaticamente.</em>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MealSlot({sk,meal,accent,options,selId,onSel,isOpen,onTog,scale}){
+  const meta=MM[sk]||{icon:"🌙",label:"Cena"};
+  const sKcal=Math.round(meal.kcal*scale);
+  const sP=Math.round(meal.p*scale);const sC=Math.round(meal.c*scale);const sG=Math.round(meal.g*scale);
+  return(
+    <div style={{background:"#fff",borderRadius:16,padding:"14px 16px",border:`1.5px solid ${isOpen?accent+"50":"#f0ede8"}`,boxShadow:isOpen?`0 4px 20px ${accent}15`:"0 1px 4px rgba(0,0,0,0.04)",transition:"all 0.3s",position:"relative",overflow:"hidden"}}>
+      {isOpen&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${accent},${accent}88)`}}/>}
+      <div onClick={onTog} style={{cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:9}}>
+          <span style={{fontSize:20}}>{meta.icon}</span>
+          <div>
+            <div style={{fontSize:10,fontWeight:600,color:accent,textTransform:"uppercase",letterSpacing:"0.08em"}}>{meta.label}</div>
+            <div style={{fontSize:15,fontWeight:700,color:"#2a2520",fontFamily:"'Fraunces',serif",lineHeight:1.2,marginTop:1}}>{meal.title}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{background:accent+"15",color:accent,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>{sKcal}</span>
+          <span style={{fontSize:14,color:accent,transform:isOpen?"rotate(180deg)":"",transition:"transform 0.3s",display:"inline-block"}}>▾</span>
+        </div>
+      </div>
+      <div style={{maxHeight:isOpen?500:0,opacity:isOpen?1:0,overflow:"hidden",transition:"all 0.4s cubic-bezier(0.4,0,0.2,1)",marginTop:isOpen?12:0}}>
+        <div style={{borderTop:"1px dashed #e8e4de",paddingTop:10}}>
+          <select value={selId} onChange={e=>onSel(e.target.value)}
+            style={{width:"100%",padding:"10px 36px 10px 12px",borderRadius:12,border:`1.5px solid ${accent}40`,background:accent+"08",fontSize:14,fontWeight:600,color:"#2a2520",cursor:"pointer",outline:"none",marginBottom:10,backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${encodeURIComponent(accent)}' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center"}}>
+            {options.map(o=><option key={o.id} value={o.id}>{o.title} — {Math.round(o.kcal*scale)} kcal</option>)}
+          </select>
+          {scale!==1&&<div style={{background:"#FFF4E6",borderRadius:8,padding:"6px 10px",marginBottom:8,fontSize:11,color:"#E8943A",fontWeight:600}}>📏 Porzioni adattate al tuo profilo ({Math.round(scale*100)}% della base)</div>}
+          {meal.items.map((item,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:7,padding:"4px 0",fontSize:14,color:"#5a5550",lineHeight:1.5}}><span style={{color:accent,fontSize:7,marginTop:7}}>●</span>{item}</div>)}
+          <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+            <Pill label="P" value={sP} unit="g" color="#E07B5B"/>
+            <Pill label="C" value={sC} unit="g" color="#D4A13A"/>
+            <Pill label="G" value={sG} unit="g" color="#5B8A72"/>
+          </div>
+          {meal.tip&&<div style={{marginTop:10,padding:"10px 12px",background:accent+"0A",borderRadius:10,borderLeft:`3px solid ${accent}40`,fontSize:13,color:"#6b6560",fontStyle:"italic",lineHeight:1.5}}>💡 {meal.tip}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WBar({cur,tar}){
+  const pct=Math.min((cur/tar)*100,110);const diff=cur-tar;
+  const over=diff>300;const under=diff<-500;
+  const col=over?"#C4563A":under?"#D4A13A":"#4A7C59";
+  return(
+    <div style={{background:"#fff",borderRadius:18,padding:"16px 18px",marginBottom:16,border:"1.5px solid #f0ede8"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
+        <div style={{fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"#b0a89e"}}>Bilancio Settimanale</div>
+        <div style={{fontFamily:"'Fraunces',serif",fontSize:13,fontWeight:700,color:col}}>{diff>0?"+":""}{diff} kcal</div>
+      </div>
+      <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:800,color:"#2a2520",marginBottom:8}}>
+        {cur.toLocaleString("it-IT")} <span style={{fontSize:13,fontWeight:500,color:"#8a8580"}}>/ {tar.toLocaleString("it-IT")} kcal</span>
+      </div>
+      <div style={{background:"#f0ede8",borderRadius:10,height:10,overflow:"hidden"}}>
+        <div style={{width:`${Math.min(pct,100)}%`,height:"100%",background:`linear-gradient(90deg,${col}cc,${col})`,borderRadius:10,transition:"width 0.5s"}}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:10,color:"#b0a89e"}}>
+        <span>0</span><span style={{fontWeight:600,color:col}}>{over?"⚠️ Sopra":under?"⚠️ Troppo basso":"✓ In target"}</span><span>{tar.toLocaleString("it-IT")}</span>
+      </div>
+    </div>
+  );
+}
+
+function ShopList({sel}){
+  const grouped=useMemo(()=>buildShop(sel),[sel]);
+  const [chk,setChk]=useState({});const tog=k=>setChk(p=>({...p,[k]:!p[k]}));
+  const cats=["prot","latt","cer","fv","cond","surgelati"];
+  if(!cats.some(ck=>grouped[ck]&&grouped[ck].length))return<div style={{textAlign:"center",padding:40,color:"#b0a89e"}}>Nessun ingrediente</div>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {cats.map(ck=>{const items=grouped[ck];if(!items||!items.length)return null;
+        return(<div key={ck} style={{background:"#fff",borderRadius:16,padding:"14px 16px",border:"1.5px solid #f0ede8"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#2a2520",fontFamily:"'Fraunces',serif",marginBottom:8,paddingBottom:6,borderBottom:"1px dashed #e8e4de"}}>{CAT[ck]}</div>
+          {items.map((it,idx)=>{const k=ck+it.item;const done=chk[k];
+            return(<div key={idx} onClick={()=>tog(k)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",cursor:"pointer",borderBottom:idx<items.length-1?"1px solid #faf8f5":"none",opacity:done?0.4:1,transition:"opacity 0.2s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:22,height:22,borderRadius:6,border:done?"2px solid #4A7C59":"2px solid #d0cbc4",background:done?"#4A7C59":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{done&&<span style={{color:"#fff",fontSize:12,fontWeight:700}}>✓</span>}</div>
+                <span style={{fontSize:14,textDecoration:done?"line-through":"none"}}>{it.item}</span>
+              </div>
+              <span style={{fontSize:11,color:"#b0a89e",whiteSpace:"nowrap",marginLeft:8}}>{[...new Set(it.days)].join(", ")}</span>
+            </div>)})}
+        </div>)})}
+    </div>
+  );
+}
+
+/* ══════════════════ PRINT ══════════════════ */
+function printHTML(sel,profile){
+  const{target,protG,fatG,carbG}=calcMacros(profile);const wTarget=target*7;
+  let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Piano Settimanale</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:'DM Sans',sans-serif;color:#2a2520;padding:20px 28px;font-size:11px;line-height:1.5}
+h1{font-family:'Fraunces',serif;font-size:22px;text-align:center;margin-bottom:2px}.sub{text-align:center;color:#8a8580;font-size:11px;margin-bottom:14px}
+.day{page-break-inside:avoid;margin-bottom:12px;border:1.5px solid #e8e4de;border-radius:10px;padding:10px 14px}
+.dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;border-bottom:1px solid #f0ede8;padding-bottom:5px}
+.dn{font-family:'Fraunces',serif;font-size:14px;font-weight:700}.dk{font-weight:700;color:#4A7C59;font-size:12px}
+.ms{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px}
+.ml{font-size:9px;font-weight:600;text-transform:uppercase;color:#b0a89e}.mt{font-weight:700;font-size:11.5px}.mi{font-size:10px;color:#5a5550}.mm{font-size:9px;color:#8a8580;margin-top:1px}
+.wb{text-align:center;margin-bottom:14px;padding:8px;background:#f8f6f3;border-radius:8px}.wt{font-family:'Fraunces',serif;font-size:18px;font-weight:700}
+.prof{display:flex;justify-content:center;gap:20px;margin-bottom:12px;font-size:10px;color:#5a5550}
+.shop{page-break-before:always}.shop h2{font-family:'Fraunces',serif;font-size:18px;margin-bottom:10px;text-align:center}
+.sc{margin-bottom:8px}.sct{font-weight:700;font-size:12px;margin-bottom:3px;border-bottom:1px solid #e8e4de;padding-bottom:2px}
+.si{display:flex;justify-content:space-between;padding:2px 0;font-size:10.5px}.sid{color:#8a8580;font-size:9px}
+.ch{display:inline-block;width:11px;height:11px;border:1.5px solid #ccc;border-radius:3px;margin-right:6px;vertical-align:middle}
+@media print{body{padding:10px 14px}}</style></head><body>`;
+  h+=`<h1>🍽️ Piano Settimanale Personalizzato</h1>`;
+  h+=`<div class="prof"><span>👤 ${profile.sex==="F"?"Donna":"Uomo"}, ${profile.age} anni</span><span>📏 ${profile.height} cm</span><span>⚖️ ${profile.weight} kg → ${profile.goalWeight} kg</span><span>🎯 ${target} kcal/giorno</span></div>`;
+  h+=`<div class="sub">P ${protG}g · C ${carbG}g · G ${fatG}g · BMR ${calcBMR(profile)} · TDEE ${calcTDEE(profile)}</div>`;
+  let wt=0;const scale=target/2050;
+  for(let i=0;i<7;i++)wt+=Math.round(dkc(sel,i)*scale);
+  h+=`<div class="wb"><div class="wt">${wt.toLocaleString("it-IT")} / ${wTarget.toLocaleString("it-IT")} kcal settimanali</div></div>`;
+  for(let i=0;i<7;i++){const meals=gm(sel,i);const d=Math.round(dkc(sel,i)*scale);const soc=sel[i].social;
+    h+=`<div class="day"><div class="dh"><div class="dn">${DE[i]} ${DN[i]}${soc?' 🥂':''}</div><div class="dk">${d} kcal</div></div><div class="ms">`;
+    ["colazione","spuntino1","pranzo","spuntino2","cena"].forEach(sk=>{const m=meals[sk];const meta=MM[sk];
+      h+=`<div><div class="ml">${meta.icon} ${meta.label}</div><div class="mt">${m.title}</div><div class="mi">${m.items.join(' · ')}</div><div class="mm">${Math.round(m.kcal*scale)}kcal · P${Math.round(m.p*scale)}g · C${Math.round(m.c*scale)}g · G${Math.round(m.g*scale)}g</div></div>`});
+    h+=`</div></div>`}
+  const shop=buildShop(sel);h+=`<div class="shop"><h2>🛒 Lista della Spesa</h2>`;
+  Object.entries(CAT).forEach(([ck,cl])=>{const items=shop[ck];if(!items||!items.length)return;h+=`<div class="sc"><div class="sct">${cl}</div>`;items.forEach(it=>{h+=`<div class="si"><span><span class="ch"></span>${it.item}</span><span class="sid">${[...new Set(it.days)].join(', ')}</span></div>`});h+=`</div>`});
+  h+=`</div></body></html>`;return h;
+}
+
+/* ══════════════════ MAIN APP ══════════════════ */
+function App(){
+  const [ad,setAd]=useState(0);
+  const [sel,setSel]=useState(initSel);
+  const [os,setOs]=useState(null);
+  const [tab,setTab]=useState("planner");
+  const [profile,setProfile]=useState(loadProf);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{try{localStorage.setItem(SAVE_SEL,JSON.stringify(sel))}catch(e){}},[sel]);
+  useEffect(()=>{try{localStorage.setItem(SAVE_PROF,JSON.stringify(profile))}catch(e){}},[profile]);
+
+  const{target}=calcMacros(profile);
+  const scale=target/2050; // scale factor vs base 2050
+  const wTarget=target*7;
+
+  const upd=(d,k,v)=>setSel(p=>({...p,[d]:{...p[d],[k]:v}}));
+  const togSoc=d=>{setSel(p=>({...p,[d]:{...p[d],social:!p[d].social}}));setOs(null)};
+  const wTotal=useMemo(()=>{let t=0;for(let i=0;i<7;i++)t+=Math.round(dkc(sel,i)*scale);return t},[sel,scale]);
+
+  const meals=gm(sel,ad);const dayK=Math.round(dkc(sel,ad)*scale);
+  const s=sel[ad];const accent=DC[ad];const isSoc=s.social;
+
+  const slotCfg=isSoc?[
+    {key:"colazione",opts:SOC_COL,sk:"socialColazione"},{key:"spuntino1",opts:SOC_S1,sk:"socialSpuntino1"},
+    {key:"pranzo",opts:SOC_PR,sk:"socialPranzo"},{key:"spuntino2",opts:SOC_S2,sk:"socialSpuntino2"},
+    {key:"cena",opts:OPTIONS.social,sk:"socialCena"},
+  ]:[
+    {key:"colazione",opts:OPTIONS.colazione,sk:"colazione"},{key:"spuntino1",opts:OPTIONS.spuntino1,sk:"spuntino1"},
+    {key:"pranzo",opts:OPTIONS.pranzo,sk:"pranzo"},{key:"spuntino2",opts:OPTIONS.spuntino2,sk:"spuntino2"},
+    {key:"cena",opts:OPTIONS.cena,sk:"cena"},
+  ];
+
+  const doDownload=useCallback(()=>{
+    setSaving(true);
+    setTimeout(()=>{
+      const html=printHTML(sel,profile);
+      const blob=new Blob([html],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=url;a.download='piano_settimanale.html';
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);setSaving(false)},200);
+    },100);
+  },[sel,profile]);
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(180deg,#faf8f5 0%,#f5f1ec 100%)"}}>
+      <div style={{maxWidth:540,margin:"0 auto",padding:"calc(env(safe-area-inset-top,12px) + 12px) 16px 120px"}}>
+
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:10,fontWeight:600,letterSpacing:"0.16em",textTransform:"uppercase",color:"#b0a89e",marginBottom:4}}>Il tuo piano personalizzato</div>
+          <h1 style={{fontFamily:"'Fraunces',serif",fontSize:28,fontWeight:800,color:"#2a2520",margin:0}}>Meal Planner</h1>
+          <p style={{fontSize:13,color:"#8a8580",marginTop:4}}>~{target} kcal/giorno · Target: {profile.goalWeight} kg</p>
+        </div>
+
+        {tab==="planner"&&<WBar cur={wTotal} tar={wTarget}/>}
+
+        {/* Tab bar */}
+        <div style={{display:"flex",gap:4,marginBottom:18,background:"#fff",borderRadius:14,padding:4,border:"1.5px solid #f0ede8"}}>
+          {[{id:"planner",label:"🍽️ Planner"},{id:"shopping",label:"🛒 Spesa"},{id:"profile",label:"⚙️ Profilo"}].map(t=>(
+            <button key={t.id} onClick={()=>{setTab(t.id);setOs(null)}} style={{flex:1,padding:"11px 0",borderRadius:11,border:"none",background:tab===t.id?"#2a2520":"transparent",color:tab===t.id?"#fff":"#8a8580",fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.25s"}}>{t.label}</button>
+          ))}
+        </div>
+
+        {tab==="planner"&&<>
+          <div style={{display:"flex",gap:5,justifyContent:"center",marginBottom:18,flexWrap:"wrap"}}>
+            {DN.map((name,i)=>{const isA=i===ad;const isSc=sel[i].social;
+              return(<button key={i} onClick={()=>{setAd(i);setOs(null)}} style={{padding:"8px 12px",borderRadius:12,cursor:"pointer",border:isA?`2px solid ${DC[i]}`:"2px solid transparent",background:isA?DCL[i]:"#fff",color:isA?DC[i]:"#8a8580",fontWeight:isA?700:500,fontSize:13,boxShadow:isA?`0 2px 12px ${DC[i]}20`:"0 1px 3px rgba(0,0,0,0.05)",transition:"all 0.25s",position:"relative"}}>
+                <span style={{fontSize:15}}>{isSc?"🥂":DE[i]}</span><span style={{marginLeft:3}}>{name.substring(0,3)}</span>
+                {isSc&&<span style={{position:"absolute",top:-4,right:-4,width:10,height:10,background:"#E07B9B",borderRadius:"50%",border:"2px solid #faf8f5"}}/>}
+              </button>)})}
+          </div>
+
+          <div style={{background:`linear-gradient(135deg,${accent},${accent}cc)`,borderRadius:20,padding:"18px 20px",marginBottom:14,color:"#fff",boxShadow:`0 8px 30px ${accent}30`,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:-20,right:-10,fontSize:80,opacity:0.12}}>{isSoc?"🥂":DE[ad]}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",opacity:0.8}}>{isSoc?"Social Night 🎉":DN[ad]}</div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:800,marginTop:3}}>{DN[ad]}</div>
+              </div>
+              <button onClick={()=>togSoc(ad)} style={{padding:"8px 16px",borderRadius:12,cursor:"pointer",border:isSoc?"2px solid rgba(255,255,255,0.6)":"2px solid rgba(255,255,255,0.3)",background:isSoc?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.1)",color:"#fff",fontSize:13,fontWeight:600,transition:"all 0.3s"}}>{isSoc?"✓ Social":"🥂 Social"}</button>
+            </div>
+            <div style={{display:"flex",gap:12,marginTop:12,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:700}}>{dayK} kcal</span>
+              <span style={{opacity:0.5}}>|</span>
+              <span style={{fontSize:12,opacity:0.85}}>P {Math.round(Object.values(meals).reduce((a,m)=>a+m.p,0)*scale)}g · C {Math.round(Object.values(meals).reduce((a,m)=>a+m.c,0)*scale)}g · G {Math.round(Object.values(meals).reduce((a,m)=>a+m.g,0)*scale)}g</span>
+            </div>
+          </div>
+
+          {isSoc&&<div style={{background:"linear-gradient(135deg,#FDF0F3,#FFF4E6)",borderRadius:14,padding:"12px 16px",marginBottom:14,display:"flex",gap:10,alignItems:"center",border:"1.5px solid #f0ddd5"}}>
+            <span style={{fontSize:24}}>💡</span>
+            <div style={{fontSize:13,color:"#6b6560",lineHeight:1.5}}><strong style={{color:"#C4563A"}}>Buffer attivo.</strong> Pasti leggeri di giorno, serata libera!</div>
+          </div>}
+
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {slotCfg.map(({key,opts,sk:selKey})=>(
+              <MealSlot key={key+(isSoc?"s":"n")} sk={key} meal={meals[key]} accent={accent} options={opts} selId={s[selKey]} onSel={v=>upd(ad,selKey,v)} isOpen={os===key} onTog={()=>setOs(os===key?null:key)} scale={scale}/>
+            ))}
+          </div>
+
+          <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:16,flexWrap:"wrap"}}>
+            {DN.map((_,i)=>{const dki=Math.round(dkc(sel,i)*scale);const delta=dki-target;
+              const c=Math.abs(delta)<=Math.round(target*0.08)?"#4A7C59":delta>0?"#C4563A":"#D4A13A";
+              return(<div key={i} onClick={()=>{setAd(i);setOs(null)}} style={{width:66,padding:"7px 4px",borderRadius:10,textAlign:"center",cursor:"pointer",background:i===ad?accent+"12":"#fff",border:i===ad?`1.5px solid ${accent}40`:"1.5px solid #f0ede8",transition:"all 0.2s"}}>
+                <div style={{fontSize:9,fontWeight:600,color:"#b0a89e"}}>{DS[i]}</div>
+                <div style={{fontSize:13,fontWeight:700,color:c,fontFamily:"'Fraunces',serif",marginTop:2}}>{dki}</div>
+                <div style={{fontSize:8,color:c,fontWeight:600}}>{delta>0?`+${delta}`:delta}</div>
+              </div>)})}
+          </div>
+        </>}
+
+        {tab==="shopping"&&<ShopList sel={sel}/>}
+        {tab==="profile"&&<ProfilePanel profile={profile} setProfile={setProfile}/>}
+      </div>
+
+      <div className="no-print" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(250,248,245,0.92)",backdropFilter:"blur(12px)",borderTop:"1px solid #e8e4de",padding:`12px 16px calc(env(safe-area-inset-bottom,8px) + 8px)`,display:"flex",justifyContent:"center"}}>
+        <button onClick={doDownload} disabled={saving}
+          style={{maxWidth:540,width:"100%",padding:"16px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#2a2520,#4a4540)",color:"#fff",fontSize:15,fontWeight:700,cursor:saving?"wait":"pointer",boxShadow:"0 4px 20px rgba(42,37,32,0.25)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:saving?0.7:1,transition:"all 0.2s"}}>
+          {saving?"⏳ Generazione...":"📥 Scarica Piano Stampabile"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+<script>
+if('serviceWorker' in navigator){
+  const SW=`const C='mp-v2';self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(['/'])).then(()=>self.skipWaiting())));self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));self.addEventListener('fetch',e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});`;
+  navigator.serviceWorker.register(URL.createObjectURL(new Blob([SW],{type:'application/javascript'}))).catch(()=>{});
+}
+</script>
+</body>
+</html>
