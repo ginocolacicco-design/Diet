@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<title>Meal Planner</title>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="MealPlan"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#faf8f5"/>
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiTWVhbCBQbGFubmVyIiwic2hvcnRfbmFtZSI6Ik1lYWxQbGFuIiwic3RhcnRfdXJsIjoiLiIsImRpc3BsYXkiOiJzdGFuZGFsb25lIiwiYmFja2dyb3VuZF9jb2xvciI6IiNmYWY4ZjUiLCJ0aGVtZV9jb2xvciI6IiMyYTI1MjAifQ=="/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700;9..144,800&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%;-webkit-overflow-scrolling:touch}
+body{font-family:'DM Sans',system-ui,sans-serif;background:linear-gradient(180deg,#faf8f5,#f5f1ec);color:#2a2520;min-height:100%}
+button,select,input,textarea{font-family:inherit;-webkit-appearance:none}
+input[type=range]{width:100%;height:6px;border-radius:3px;outline:none;-webkit-appearance:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;cursor:pointer;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+input[type=date],input[type=number],input[type=text]{padding:10px 12px;border-radius:10px;border:1.5px solid #e0dbd4;font-size:14px;background:#fff;color:#2a2520;outline:none;width:100%}
+input[type=number]:focus,input[type=text]:focus{border-color:#7B5EA7}
+::-webkit-scrollbar{display:none}
+@media print{.no-print{display:none!important}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.10/babel.min.js"></script>
+<script type="text/babel">
+const{useState,useMemo,useCallback,useEffect}=React;
+
+/* ═══ CONSTANTS ═══ */
+const FD=[{id:"v",label:"🥬 Vegetariano",c:"#4A7C59"},{id:"vg",label:"🌱 Vegano",c:"#5B8A72"},{id:"gf",label:"🌾 Senza Glutine",c:"#D4A13A"},{id:"lf",label:"🥛 Senza Lattosio",c:"#7B5EA7"}];
+const CAT={prot:"🥩 Proteine",latt:"🥛 Latticini",cer:"🌾 Cereali & Pane",fv:"🥦 Frutta & Verdura",cond:"🫒 Dispensa",surg:"❄️ Surgelati"};
+const DN=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"],DS=["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
+const DE=["🌿","🔥","🌻","💜","🎉","☀️","🫒"],DC=["#4A7C59","#C4563A","#D4A13A","#7B5EA7","#E07B9B","#E8943A","#5B8A72"],DCL=["#E8F0E4","#FAEAE6","#FBF3E0","#F0EBF7","#FDF0F3","#FFF4E6","#E6F2EC"];
+const SLOTS=["colazione","spuntino1","pranzo","spuntino2","cena"];
+const MM={colazione:{icon:"🌅",label:"Colazione"},spuntino1:{icon:"🍎",label:"Spuntino"},pranzo:{icon:"🍽️",label:"Pranzo"},spuntino2:{icon:"🥤",label:"Merenda"},cena:{icon:"🌙",label:"Cena"}};
+const SK="mp5_sel",PK="mp5_prof",WK="mp5_wt",CK="mp5_custom";
+const ACT=[{id:"sed",label:"Sedentario",desc:"Poco movimento",f:1.2},{id:"light",label:"Leggero",desc:"1-2 all/sett",f:1.375},{id:"mod",label:"Moderato",desc:"2-3 all/sett",f:1.55},{id:"active",label:"Attivo",desc:"4-5 all/sett",f:1.725},{id:"very",label:"Molto attivo",desc:"6-7 all/sett",f:1.9}];
+const DEFL=[{id:"gentle",label:"Dolce",desc:"-15%",p:.15},{id:"moderate",label:"Moderato",desc:"-20%",p:.20},{id:"aggressive",label:"Deciso",desc:"-25%",p:.25}];
+const DIST=[
+  {id:"balanced",label:"⚖️ Equilibrato",desc:"5 pasti bilanciati",w:{colazione:22,spuntino1:7,pranzo:27,spuntino2:8,cena:29},extra:7},
+  {id:"dinner",label:"🌙 Cena Protagonista",desc:"Giornata leggera, sera abbondante",w:{colazione:14,spuntino1:5,pranzo:18,spuntino2:0,cena:52},extra:11},
+  {id:"lunch",label:"☀️ Pranzo Protagonista",desc:"Pranzo sostanzioso, cena leggera",w:{colazione:18,spuntino1:7,pranzo:40,spuntino2:7,cena:22},extra:6},
+  {id:"three",label:"3️⃣ Solo 3 Pasti",desc:"Niente spuntini",w:{colazione:26,spuntino1:0,pranzo:36,spuntino2:0,cena:38},extra:0},
+  {id:"if16",label:"⏰ 16:8",desc:"Digiuno intermittente",w:{colazione:0,spuntino1:0,pranzo:40,spuntino2:10,cena:50},extra:0},
+];
+const BASE_AVG={colazione:430,spuntino1:150,pranzo:520,spuntino2:155,cena:550};
+const defProf={sex:"F",age:22,height:175,weight:85,activity:"mod",deficit:"moderate",goalWeight:65,filters:[],dist:"balanced"};
+
+/* ═══ CUSTOM/FREE MEAL FLAG ═══ */
+const CUSTOM_ID="__custom__";
+
+/* ═══ ENRICHED MEDITERRANEAN DATABASE ═══ */
+const M=function(){
+  const s=(cat,item)=>({cat,item});
+  return{
+  colazione:[
+    /* --- SWEET CLASSIC BREAKFASTS --- */
+    {id:"c1",title:"Fette Biscottate & Marmellata",items:["Fette biscottate integrali (40g, 4-5 fette)","Marmellata senza zuccheri aggiunti (20g)","Latte parz. scremato (200ml)","1 frutto (mela o pera)"],kcal:420,p:14,c:72,g:8,t:["v"],tip:"Scegli marmellata >50% frutta: meno zuccheri aggiunti.",shop:[s("cer","Fette biscottate integrali"),s("cond","Marmellata senza zuccheri aggiunti"),s("latt","Latte parz. scremato"),s("fv","Mela")]},
+    {id:"c2",title:"Pane, Burro & Miele",items:["Pane integrale (60g)","Burro (10g) + miele (15g)","Caffè con latte (150ml)","1 banana"],kcal:430,p:12,c:66,g:13,t:["v"],tip:"Classico italiano: carboidrati complessi + glucosio per partire subito.",shop:[s("cer","Pane integrale"),s("latt","Burro"),s("cond","Miele"),s("latt","Latte"),s("fv","Banana")]},
+    {id:"c3",title:"Biscotti Secchi & Cappuccino",items:["6 biscotti secchi integrali (40g)","Cappuccino (200ml latte + caffè)","1 spremuta d'arancia (200ml)"],kcal:400,p:14,c:60,g:11,t:["v"],tip:"La colazione italiana per eccellenza. Cerca biscotti con <20% zuccheri.",shop:[s("cer","Biscotti secchi integrali"),s("latt","Latte"),s("fv","Arance")]},
+    {id:"c4",title:"Yogurt, Muesli & Frutta",items:["Yogurt bianco (150g)","Muesli integrale (40g)","Frutti di bosco (80g)","Miele (5g)"],kcal:410,p:18,c:58,g:10,t:["v","lf"],tip:"Lo yogurt senza zuccheri + muesli = versione controllata della colazione dolce.",shop:[s("latt","Yogurt bianco"),s("cer","Muesli integrale"),s("fv","Frutti di bosco"),s("cond","Miele")]},
+    {id:"c5",title:"Crostata Fatta in Casa",items:["1 fetta crostata (80g) marmellata","Latte parz. scremato (200ml)","1 arancia"],kcal:430,p:10,c:68,g:12,t:["v"],tip:"Una fetta casalinga è un ottimo comfort breakfast domenicale.",shop:[s("cer","Crostata"),s("latt","Latte"),s("fv","Arance")]},
+    {id:"c6",title:"Pancake all'Italiana",items:["2 pancake (farina 40g + uovo + latte)","Miele o sciroppo d'acero (15g)","Fragole o mirtilli (100g)","Yogurt greco (80g)"],kcal:430,p:20,c:58,g:12,t:["v"],tip:"Una pastella con più latte e meno burro: versione più leggera della classica.",shop:[s("cer","Farina integrale"),s("prot","Uova"),s("latt","Latte"),s("cond","Miele"),s("fv","Fragole"),s("latt","Yogurt greco")]},
+    {id:"c7",title:"Toast Dolce",items:["Pane integrale (2 fette)","Ricotta (60g) + miele (10g)","Frutti di bosco (80g)","Caffè o tè"],kcal:420,p:18,c:52,g:14,t:["v"],tip:"La ricotta spalmata sostituisce marmellata/Nutella: più proteine, meno zuccheri.",shop:[s("cer","Pane integrale"),s("latt","Ricotta"),s("cond","Miele"),s("fv","Frutti di bosco")]},
+    {id:"c8",title:"Porridge con Frutta",items:["Avena (50g) nel latte (150ml)","1 mela a cubetti + cannella","Burro d'arachidi (12g)","Semi di chia (5g)"],kcal:440,p:16,c:58,g:16,t:["v","gf"],tip:"Fuoco lento mescolando: diventa cremoso.",shop:[s("cer","Fiocchi d'avena"),s("latt","Latte"),s("fv","Mela"),s("cond","Burro d'arachidi")]},
+    {id:"c9",title:"Bowl Energetica Proteica",items:["Yogurt greco 0% (170g)","Avena (50g) + cannella","Mirtilli (100g)","Noci (10g)"],kcal:430,p:26,c:52,g:11,t:["v","gf"],tip:"Overnight oats la sera prima!",shop:[s("latt","Yogurt greco 0%"),s("cer","Fiocchi d'avena"),s("fv","Mirtilli"),s("cond","Noci")]},
+    {id:"c10",title:"Smoothie Bowl",items:["Banana + frutti di bosco","Latte vegetale (100ml)","Whey (20g)","Granola (25g)"],kcal:410,p:24,c:56,g:9,t:["v"],tip:"Banana congelata = gelato.",shop:[s("fv","Banana"),s("fv","Frutti di bosco"),s("latt","Latte vegetale"),s("cond","Proteine whey"),s("cer","Granola")]},
+    /* --- SAVORY BREAKFASTS --- */
+    {id:"c11",title:"Toast & Uova",items:["Pane integrale (2 fette)","Uova strapazzate (2)","Pomodoro fresco","Avocado (30g)"],kcal:440,p:22,c:38,g:20,t:["v","lf"],tip:"Fuoco basso per uova cremose.",shop:[s("cer","Pane integrale"),s("prot","Uova"),s("fv","Pomodoro"),s("fv","Avocado")]},
+    {id:"c12",title:"Brunch Salmone",items:["2 uova in camicia","Pane tostato (1 fetta)","Salmone affumicato (40g)","Avocado (40g)"],kcal:480,p:30,c:28,g:26,t:["lf"],tip:"Acqua+aceto, 3 min.",shop:[s("prot","Uova"),s("cer","Pane integrale"),s("prot","Salmone affumicato"),s("fv","Avocado")]},
+    {id:"c13",title:"Shakshuka Light",items:["2 uova in salsa di pomodoro","Peperoni + cipolla (100g)","Pane integrale (1 fetta)","Feta (20g)"],kcal:400,p:24,c:32,g:18,t:["v","lf"],tip:"Piatto unico: proteine, verdure e carboidrati in padella.",shop:[s("prot","Uova"),s("fv","Peperoni"),s("cond","Passata di pomodoro"),s("cer","Pane integrale")]},
+    /* --- VEGAN --- */
+    {id:"c14",title:"Açaí Bowl Vegana",items:["Açaí surgelato (100g)","Banana + granola GF (25g)","Latte di cocco (80ml)","Semi di canapa (10g)"],kcal:400,p:10,c:52,g:18,t:["v","vg","gf","lf"],tip:"Semi di canapa: proteine vegetali complete.",shop:[s("surg","Açaí surgelato"),s("fv","Banana"),s("cer","Granola senza glutine"),s("cond","Semi di canapa")]},
+    {id:"c15",title:"Tofu Scramble",items:["Tofu sbriciolato (150g) + curcuma","Pane integrale (1 fetta)","Spinacini + pomodoro","Olio EVO (5ml)"],kcal:380,p:24,c:30,g:16,t:["v","vg","lf"],tip:"La curcuma dà colore simile alle uova.",shop:[s("prot","Tofu"),s("cer","Pane integrale"),s("fv","Spinacini"),s("cond","Olio EVO")]},
+    {id:"c16",title:"Latte di Avena & Biscotti",items:["Latte d'avena (200ml)","Biscotti vegani integrali (40g)","1 banana","Mandorle (15g)"],kcal:440,p:10,c:68,g:14,t:["v","vg","lf"],tip:"Colazione dolce 100% vegetale.",shop:[s("latt","Latte d'avena"),s("cer","Biscotti integrali vegani"),s("fv","Banana"),s("cond","Mandorle")]},
+  ],
+  spuntino1:[
+    {id:"s1a",title:"Mela & Mandorle",items:["1 mela","Mandorle (20g)"],kcal:155,p:4,c:20,g:8,t:["v","vg","gf","lf"],shop:[s("fv","Mela"),s("cond","Mandorle")]},
+    {id:"s1b",title:"Kiwi & Noci",items:["1 kiwi","Noci (15g)"],kcal:140,p:3,c:16,g:8,t:["v","vg","gf","lf"],shop:[s("fv","Kiwi"),s("cond","Noci")]},
+    {id:"s1c",title:"Banana & Arachidi",items:["1 banana","Burro d'arachidi (10g)"],kcal:180,p:4,c:28,g:6,t:["v","vg","gf","lf"],tip:"Anche come pre-workout.",shop:[s("fv","Banana"),s("cond","Burro d'arachidi")]},
+    {id:"s1d",title:"Pera & Frutta Secca",items:["1 pera","Mix frutta secca (15g)"],kcal:160,p:3,c:22,g:8,t:["v","vg","gf","lf"],shop:[s("fv","Pera"),s("cond","Mix frutta secca")]},
+    {id:"s1e",title:"Agrumi Light",items:["1 arancia o 2 mandarini"],kcal:70,p:1,c:16,g:0,t:["v","vg","gf","lf"],shop:[s("fv","Arance/Mandarini")]},
+    {id:"s1f",title:"Frullato Fresco",items:["Banana + latte vegetale + cacao"],kcal:160,p:4,c:30,g:4,t:["v","vg","gf","lf"],shop:[s("fv","Banana"),s("latt","Latte vegetale"),s("cond","Cacao amaro")]},
+    {id:"s1g",title:"Yogurt & Miele",items:["Yogurt greco (125g)","Miele (10g) + cannella"],kcal:140,p:14,c:16,g:2,t:["v","gf"],shop:[s("latt","Yogurt greco"),s("cond","Miele")]},
+    {id:"s1h",title:"Edamame",items:["Edamame sgusciati (80g)","Pizzico di sale marino"],kcal:120,p:10,c:8,g:5,t:["v","vg","gf","lf"],tip:"Snack proteico vegano: 10g di proteine.",shop:[s("surg","Edamame")]},
+    {id:"s1i",title:"Crackers & Ricotta",items:["Crackers integrali (25g)","Ricotta (40g) + erba cipollina"],kcal:170,p:8,c:18,g:7,t:["v"],shop:[s("cer","Crackers integrali"),s("latt","Ricotta")]},
+    {id:"s1j",title:"Caffè & Biscotti",items:["Caffè o tè","2 biscotti secchi integrali"],kcal:100,p:2,c:18,g:3,t:["v","lf"],shop:[s("cer","Biscotti secchi integrali")]},
+  ],
+  pranzo:[
+    /* --- MEDITERRANEAN PASTA/RICE --- */
+    {id:"p1",title:"Spaghetti al Pomodoro & Basilico",items:["Spaghetti integrali (80g)","Passata di pomodoro (120g)","Basilico fresco, aglio","Parmigiano (15g) + olio EVO (10ml)"],kcal:510,p:18,c:78,g:14,t:["v"],tip:"La ricetta più semplice e più italiana. Aglio a fuoco dolce nell'olio.",shop:[s("cer","Spaghetti integrali"),s("cond","Passata di pomodoro"),s("fv","Basilico"),s("latt","Parmigiano"),s("cond","Olio EVO")]},
+    {id:"p2",title:"Pasta al Pesto alla Genovese",items:["Trofie integrali (80g)","Pesto genovese (20g)","Fagiolini (100g) + patate (50g)","Pinoli tostati (5g)"],kcal:540,p:18,c:66,g:22,t:["v"],tip:"La ricetta originale ligure: pasta, patate e fagiolini.",shop:[s("cer","Trofie"),s("cond","Pesto genovese"),s("fv","Fagiolini"),s("fv","Patate"),s("cond","Pinoli")]},
+    {id:"p3",title:"Spaghetti aglio, olio & peperoncino",items:["Spaghetti (80g)","Aglio (2 spicchi) + olio EVO (15ml)","Peperoncino + prezzemolo","Pangrattato tostato (10g)"],kcal:500,p:14,c:72,g:18,t:["v","vg","lf"],tip:"Aggiungi il pangrattato tostato: dona croccantezza e sostituisce il formaggio.",shop:[s("cer","Spaghetti"),s("cond","Olio EVO"),s("fv","Aglio"),s("cond","Pangrattato")]},
+    {id:"p4",title:"Pasta al Tonno",items:["Pasta corta integrale (70g)","Tonno al naturale (100g)","Pomodorini (150g) + olive","Capperi + prezzemolo"],kcal:540,p:38,c:58,g:12,t:["lf"],tip:"Il classico pranzo italiano veloce: 15 minuti massimo.",shop:[s("cer","Pasta corta"),s("prot","Tonno al naturale"),s("fv","Pomodorini"),s("fv","Olive"),s("cond","Capperi")]},
+    {id:"p5",title:"Risotto alla Milanese",items:["Riso carnaroli (70g)","Brodo vegetale + zafferano","Parmigiano (15g) + burro (5g)","Insalata verde (100g)"],kcal:460,p:14,c:64,g:15,t:["v","gf"],tip:"La mantecatura a freddo con burro e parmigiano è il segreto.",shop:[s("cer","Riso carnaroli"),s("cond","Brodo vegetale"),s("cond","Zafferano"),s("latt","Parmigiano"),s("latt","Burro")]},
+    {id:"p6",title:"Risotto ai Funghi",items:["Riso carnaroli (70g)","Funghi porcini o champignon (150g)","Brodo vegetale + prezzemolo","Parmigiano (15g)"],kcal:470,p:16,c:66,g:14,t:["v","gf"],tip:"Fai rosolare i funghi prima, li aggiungerai a fine cottura.",shop:[s("cer","Riso carnaroli"),s("fv","Funghi"),s("cond","Brodo vegetale"),s("latt","Parmigiano")]},
+    {id:"p7",title:"Pasta e Ceci",items:["Pasta mista (60g) + ceci (100g)","Rosmarino, aglio","Olio EVO (10ml)","Verdure grigliate (200g)"],kcal:530,p:24,c:68,g:16,t:["v","vg","lf"],tip:"Cereali + legumi = aminoacidi completi.",shop:[s("cer","Pasta mista"),s("prot","Ceci (barattolo)"),s("cond","Olio EVO"),s("fv","Verdure miste")]},
+    {id:"p8",title:"Pasta e Fagioli",items:["Pasta mista (60g) + fagioli borlotti (120g)","Sedano, carote, cipolla","Rosmarino, olio EVO","Parmigiano (10g)"],kcal:540,p:26,c:72,g:14,t:["v"],tip:"Classico della cucina veneta e toscana: piatto unico completo.",shop:[s("cer","Pasta mista"),s("prot","Fagioli borlotti"),s("fv","Sedano"),s("fv","Carote"),s("latt","Parmigiano")]},
+    {id:"p9",title:"Pasta alla Norma",items:["Maccheroni (80g)","Melanzane fritte in padella (120g)","Passata di pomodoro + basilico","Ricotta salata (15g)"],kcal:550,p:18,c:76,g:18,t:["v"],tip:"Classico siciliano. Cuoci le melanzane a cubetti in poco olio: più leggere.",shop:[s("cer","Maccheroni"),s("fv","Melanzane"),s("cond","Passata di pomodoro"),s("latt","Ricotta salata"),s("fv","Basilico")]},
+    {id:"p10",title:"Pasta alle Vongole",items:["Linguine (80g)","Vongole veraci (200g)","Aglio, prezzemolo, peperoncino","Olio EVO + vino bianco"],kcal:520,p:28,c:68,g:14,t:["lf"],tip:"Fai spurgare le vongole 2h in acqua salata prima di cuocerle.",shop:[s("cer","Linguine"),s("prot","Vongole"),s("fv","Aglio"),s("fv","Prezzemolo"),s("cond","Vino bianco")]},
+    {id:"p11",title:"Lasagna della Domenica",items:["Lasagna al forno (1 porzione media, 180g)","Insalata mista (100g)","Olio EVO (5ml)"],kcal:580,p:32,c:48,g:28,t:[],tip:"Una porzione ragionata è sostenibile. Fatta in casa è più controllata.",shop:[s("prot","Lasagna"),s("fv","Insalata mista"),s("cond","Olio EVO")]},
+    {id:"p12",title:"Risotto al Radicchio",items:["Riso carnaroli (70g)","Radicchio rosso (100g)","Brodo + vino rosso","Gorgonzola dolce (20g) + noci"],kcal:490,p:16,c:64,g:16,t:["v","gf"],tip:"Il contrasto amaro-dolce del radicchio con gorgonzola è perfetto.",shop:[s("cer","Riso carnaroli"),s("fv","Radicchio"),s("latt","Gorgonzola"),s("cond","Noci")]},
+    {id:"p13",title:"Risotto alla Zucca",items:["Riso carnaroli (70g)","Zucca (150g)","Brodo + salvia","Parmigiano (15g)"],kcal:460,p:14,c:70,g:12,t:["v","gf"],tip:"Autunnale e confortante. La zucca già cotta accelera tutto.",shop:[s("cer","Riso carnaroli"),s("fv","Zucca"),s("cond","Brodo vegetale"),s("latt","Parmigiano")]},
+    {id:"p14",title:"Orecchiette cime di rapa",items:["Orecchiette (80g)","Cime di rapa (200g)","Aglio, peperoncino, acciughe (10g)","Olio EVO + pangrattato"],kcal:510,p:18,c:68,g:18,t:["lf"],tip:"Il classico pugliese. Le acciughe si sciolgono nell'olio: tutto sapore.",shop:[s("cer","Orecchiette"),s("fv","Cime di rapa"),s("prot","Acciughe"),s("cond","Olio EVO")]},
+    {id:"p15",title:"Power Bowl Mediterranea",items:["Pollo grigliato (160g)","Farro (70g)","Pomodorini, rucola, olive","Olio EVO (10ml)"],kcal:560,p:44,c:52,g:16,t:["lf"],tip:"Griglia pollo per 2-3 giorni.",shop:[s("prot","Petto di pollo"),s("cer","Farro"),s("fv","Pomodorini"),s("fv","Rucola"),s("cond","Olio EVO")]},
+    {id:"p16",title:"Insalata di Riso",items:["Riso (70g) + tonno (80g)","Pomodorini, piselli, mais","Uova sode (1)","Olio EVO + basilico"],kcal:510,p:30,c:62,g:14,t:["gf","lf"],tip:"Piatto estivo perfetto: si conserva bene in frigo 2 giorni.",shop:[s("cer","Riso basmati"),s("prot","Tonno al naturale"),s("fv","Pomodorini"),s("surg","Piselli"),s("prot","Uova")]},
+    {id:"p17",title:"Cous Cous alla Trapanese",items:["Cous cous (70g)","Pesce azzurro o gamberi (120g)","Pomodori, mandorle, menta","Olio EVO + limone"],kcal:520,p:32,c:58,g:16,t:["lf"],tip:"La versione siciliana, importata dagli arabi. Con pesce è tradizionale.",shop:[s("cer","Cous cous"),s("prot","Pesce azzurro"),s("fv","Pomodori"),s("cond","Mandorle")]},
+    {id:"p18",title:"Pasta al Ragù Bolognese",items:["Tagliatelle (80g)","Ragù di manzo (120g)","Parmigiano (15g)","Insalata di contorno"],kcal:580,p:38,c:62,g:18,t:[],tip:"Usa carne magra e poco olio: cottura lenta in pomodoro.",shop:[s("cer","Tagliatelle"),s("prot","Macinato di manzo"),s("cond","Passata di pomodoro"),s("latt","Parmigiano")]},
+    {id:"p19",title:"Wrap di Tacchino",items:["Piadina integrale","Tacchino (120g)","Lattuga, hummus (30g)"],kcal:520,p:38,c:48,g:18,t:["lf"],tip:"Hummus: grassi insaturi da tahini + fibre dai ceci.",shop:[s("cer","Piadina integrale"),s("prot","Petto di tacchino"),s("fv","Lattuga"),s("cond","Hummus")]},
+    {id:"p20",title:"Buddha Bowl Vegana",items:["Quinoa (70g) + ceci (80g)","Avocado (40g) + edamame","Cavolo rosso, carote, sesamo","Tahini + limone"],kcal:550,p:22,c:60,g:22,t:["v","vg","gf","lf"],tip:"La quinoa ha tutti gli aminoacidi essenziali.",shop:[s("cer","Quinoa"),s("prot","Ceci (barattolo)"),s("fv","Avocado"),s("surg","Edamame")]},
+    {id:"p21",title:"Insalatona Proteica",items:["Tonno (120g)","Verdure fresche (250g)","Ceci (60g)","Olio EVO + balsamico"],kcal:420,p:40,c:24,g:16,t:["gf","lf"],tip:"Perfetta per il buffer.",shop:[s("prot","Tonno in scatola"),s("fv","Insalata mista"),s("prot","Ceci (barattolo)"),s("cond","Olio EVO")]},
+  ],
+  spuntino2:[
+    {id:"s2a",title:"Fiocchi di Latte & Cacao",items:["Fiocchi di latte (150g)","Cacao amaro + miele"],kcal:170,p:22,c:12,g:4,t:["v","gf"],shop:[s("latt","Fiocchi di latte"),s("cond","Cacao amaro"),s("cond","Miele")]},
+    {id:"s2b",title:"Shake Proteico",items:["Whey (30g) + acqua","1 frutto"],kcal:200,p:28,c:16,g:2,t:["v","gf"],shop:[s("cond","Proteine whey"),s("fv","Frutto di stagione")]},
+    {id:"s2c",title:"Ricotta Light Dolce",items:["Ricotta light (100g)","Miele + cannella"],kcal:140,p:14,c:14,g:4,t:["v","gf"],shop:[s("latt","Ricotta light"),s("cond","Miele")]},
+    {id:"s2d",title:"Yogurt & Frutta Secca",items:["Yogurt greco (125g)","Mix frutta secca (15g)"],kcal:170,p:16,c:10,g:8,t:["v","gf"],shop:[s("latt","Yogurt greco"),s("cond","Mix frutta secca")]},
+    {id:"s2e",title:"Cioccolato Fondente",items:["2 quadratini cioccolato 80%","Caffè o tè"],kcal:110,p:2,c:8,g:8,t:["v","vg","gf","lf"],shop:[s("cond","Cioccolato fondente 80%")]},
+    {id:"s2f",title:"Hummus & Crudités",items:["Hummus (40g)","Carote e sedano"],kcal:130,p:5,c:12,g:7,t:["v","vg","gf","lf"],shop:[s("cond","Hummus"),s("fv","Carote"),s("fv","Sedano")]},
+    {id:"s2g",title:"Barretta Proteica",items:["1 barretta proteica (~30g prot)"],kcal:210,p:30,c:18,g:6,t:["v","gf"],shop:[s("surg","Barretta proteica")]},
+    {id:"s2h",title:"Banana & Cioccolato",items:["1 banana","Cioccolato fondente (15g)"],kcal:170,p:3,c:30,g:6,t:["v","vg","gf","lf"],shop:[s("fv","Banana"),s("cond","Cioccolato fondente")]},
+    {id:"s2i",title:"Pane & Marmellata",items:["Pane integrale (1 fetta, 30g)","Marmellata (15g)","Tè"],kcal:160,p:5,c:32,g:1,t:["v","vg","lf"],tip:"Merenda dolce classica: poche calorie, soddisfa la voglia di dolce.",shop:[s("cer","Pane integrale"),s("cond","Marmellata")]},
+    {id:"s2j",title:"Fette & Nutella",items:["Fette biscottate (2)","Crema nocciole (15g)"],kcal:180,p:4,c:22,g:8,t:["v"],tip:"Ogni tanto va bene: il piacere fa parte della costanza.",shop:[s("cer","Fette biscottate"),s("cond","Crema di nocciole")]},
+  ],
+  cena:[
+    /* --- MEDITERRANEAN FISH --- */
+    {id:"d1",title:"Salmone al Forno",items:["Salmone (150g)","Patate dolci (120g)","Broccoletti (200g)","Olio EVO"],kcal:590,p:38,c:42,g:24,t:["gf","lf"],tip:"Soia + miele + zenzero sul salmone: incredibile.",shop:[s("prot","Filetto di salmone"),s("fv","Patate dolci"),s("fv","Broccoletti"),s("cond","Olio EVO")]},
+    {id:"d2",title:"Orata al Cartoccio",items:["Orata (180g)","Patate + pomodorini","Verdure miste","Olio EVO"],kcal:550,p:40,c:36,g:22,t:["gf","lf"],tip:"Zero padelle!",shop:[s("prot","Orata"),s("fv","Patate"),s("fv","Verdure miste"),s("cond","Olio EVO")]},
+    {id:"d3",title:"Branzino alla Ligure",items:["Branzino (180g)","Patate, olive taggiasche, pomodorini","Pinoli (10g)","Olio EVO + timo"],kcal:540,p:40,c:34,g:24,t:["gf","lf"],tip:"Cottura rapida in padella coperta: 12 minuti.",shop:[s("prot","Branzino"),s("fv","Patate"),s("fv","Olive taggiasche"),s("cond","Pinoli")]},
+    {id:"d4",title:"Tonno alla Piastra",items:["Trancio di tonno (160g)","Zucchine grigliate (200g)","Pane integrale (40g)","Limone + olio EVO"],kcal:510,p:42,c:32,g:20,t:["lf"],tip:"Tonno appena scottato fuori, rosa dentro: 2 minuti per lato.",shop:[s("prot","Tonno fresco"),s("fv","Zucchine"),s("cer","Pane integrale"),s("cond","Olio EVO")]},
+    {id:"d5",title:"Polpo con Patate",items:["Polpo lessato (180g)","Patate (150g)","Olive nere, prezzemolo, aglio","Olio EVO + limone"],kcal:500,p:36,c:44,g:16,t:["gf","lf"],tip:"Piatto tipico ligure-napoletano. Il polpo cotto può essere surgelato.",shop:[s("prot","Polpo"),s("fv","Patate"),s("fv","Olive nere"),s("cond","Olio EVO")]},
+    {id:"d6",title:"Acciughe al Forno",items:["Acciughe fresche (180g)","Pangrattato + prezzemolo","Patate (100g)","Olio EVO + limone"],kcal:520,p:38,c:38,g:22,t:["lf"],tip:"Tradizione ligure: apri le acciughe a libro, farcisci con pangrattato.",shop:[s("prot","Acciughe fresche"),s("cond","Pangrattato"),s("fv","Patate"),s("fv","Prezzemolo")]},
+    {id:"d7",title:"Stir-Fry Gamberi",items:["Gamberi (160g)","Noodles di riso (60g)","Verdure wok","Teriyaki + sesamo"],kcal:520,p:36,c:52,g:12,t:["gf","lf"],tip:"Wok alta fiamma 3-4 min.",shop:[s("surg","Gamberi sgusciati"),s("cer","Noodles di riso"),s("fv","Peperoni"),s("cond","Salsa teriyaki")]},
+    {id:"d8",title:"Poke Bowl",items:["Tonno fresco (140g)","Riso basmati (60g)","Edamame, avocado","Soia + sesamo"],kcal:560,p:40,c:48,g:20,t:["gf","lf"],tip:"Perfetta per avanzi.",shop:[s("prot","Tonno fresco"),s("cer","Riso basmati"),s("surg","Edamame"),s("fv","Avocado")]},
+    /* --- MEDITERRANEAN MEAT --- */
+    {id:"d9",title:"Pollo al Limone",items:["Petto di pollo (160g)","Limone + rosmarino, aglio","Patate al forno (120g)","Insalata verde (100g)"],kcal:520,p:42,c:36,g:18,t:["gf","lf"],tip:"Marinatura 30 min nel limone e rosmarino: gusto che penetra.",shop:[s("prot","Petto di pollo"),s("fv","Limone"),s("fv","Patate"),s("fv","Rosmarino")]},
+    {id:"d10",title:"Pollo alla Cacciatora",items:["Pollo (160g, cosce o petto)","Pomodoro, olive, capperi","Polenta (60g crudo)","Rosmarino, alloro"],kcal:540,p:38,c:48,g:18,t:["gf","lf"],tip:"La polenta assorbe il sugo: accompagnamento perfetto.",shop:[s("prot","Pollo"),s("cond","Passata di pomodoro"),s("fv","Olive"),s("cer","Polenta")]},
+    {id:"d11",title:"Scaloppine al Limone",items:["Scaloppine di vitello (130g)","Farina (10g) + limone + prezzemolo","Spinaci saltati (200g)","Patate (100g)"],kcal:510,p:38,c:42,g:18,t:["lf"],tip:"Padella bollente, 1 min per lato: le scaloppine non devono cuocere troppo.",shop:[s("prot","Scaloppine di vitello"),s("fv","Limone"),s("fv","Spinaci"),s("fv","Patate")]},
+    {id:"d12",title:"Tagliata di Manzo",items:["Tagliata (150g)","Rucola + grana (10g)","Olio EVO + limone","Pane (30g)"],kcal:580,p:46,c:20,g:34,t:[],tip:"2 min/lato, riposo 5 min.",shop:[s("prot","Tagliata di manzo"),s("fv","Rucola"),s("latt","Grana"),s("cer","Pane")]},
+    {id:"d13",title:"Polpette al Sugo",items:["Polpette di manzo/tacchino (160g)","Passata di pomodoro + basilico","Riso basmati (60g crudo)","Insalata mista"],kcal:560,p:38,c:52,g:20,t:["lf"],tip:"Prepara una teglia grande e porzionale: buone anche il giorno dopo.",shop:[s("prot","Macinato misto"),s("cond","Passata di pomodoro"),s("cer","Riso basmati")]},
+    {id:"d14",title:"Spezzatino & Polenta",items:["Spezzatino di manzo (150g)","Carote, sedano, cipolla","Polenta (60g crudo)","Vino rosso, alloro"],kcal:580,p:38,c:54,g:22,t:["gf","lf"],tip:"Cottura lenta 1,5h: la carne diventa tenerissima. Batch cooking perfetto.",shop:[s("prot","Spezzatino di manzo"),s("fv","Carote"),s("fv","Sedano"),s("cer","Polenta")]},
+    {id:"d15",title:"Fajitas di Pollo",items:["Pollo a strisce (150g)","Tortilla integrale (1)","Peperoni + cipolla","Guacamole (30g)"],kcal:530,p:38,c:42,g:20,t:["lf"],tip:"Peperoni e cipolla al wok: croccanti in 3 min.",shop:[s("prot","Petto di pollo"),s("cer","Tortilla integrale"),s("fv","Peperoni"),s("fv","Avocado")]},
+    /* --- VEG/VEGAN --- */
+    {id:"d16",title:"Parmigiana di Melanzane",items:["Melanzane (250g) al forno","Passata + basilico","Mozzarella (60g) + parmigiano","Pane integrale (30g)"],kcal:540,p:28,c:42,g:26,t:["v"],tip:"Grigliate al forno anziché fritte: stesso sapore, metà calorie.",shop:[s("fv","Melanzane"),s("cond","Passata di pomodoro"),s("latt","Mozzarella"),s("latt","Parmigiano")]},
+    {id:"d17",title:"Caprese Completa",items:["Mozzarella di bufala (125g)","Pomodori (200g) + basilico","Pane casereccio (50g)","Olio EVO + origano"],kcal:530,p:26,c:36,g:30,t:["v"],tip:"Simbolo dell'estate italiana: pochi ingredienti, tutti di qualità.",shop:[s("latt","Mozzarella di bufala"),s("fv","Pomodori"),s("cer","Pane casereccio"),s("fv","Basilico")]},
+    {id:"d18",title:"Frittata di Verdure",items:["3 uova + 1 albume","Zucchine, peperoni, cipolla","Insalata + olio EVO","Pane integrale (30g)"],kcal:520,p:34,c:26,g:28,t:["v","lf"],tip:"Falla grande: avanzi domani.",shop:[s("prot","Uova"),s("fv","Zucchine"),s("fv","Peperoni"),s("cer","Pane integrale")]},
+    {id:"d19",title:"Curry di Lenticchie",items:["Lenticchie rosse (80g)","Cocco light + curry","Riso basmati (60g)","Spinacini (100g)"],kcal:540,p:24,c:72,g:14,t:["v","vg","gf","lf"],tip:"Lenticchie + riso = aminoacidi completi.",shop:[s("prot","Lenticchie rosse"),s("cond","Latte di cocco light"),s("cer","Riso basmati"),s("fv","Spinacini")]},
+    {id:"d20",title:"Tofu Teriyaki",items:["Tofu (180g) marinato","Riso basmati (60g)","Broccoli + carote (200g)","Sesamo"],kcal:510,p:28,c:56,g:16,t:["v","vg","gf","lf"],tip:"Marina il tofu almeno 30 min.",shop:[s("prot","Tofu"),s("cond","Salsa teriyaki"),s("cer","Riso basmati"),s("fv","Broccoli")]},
+    {id:"d21",title:"Chili Vegano",items:["Fagioli neri + rossi (150g)","Pomodoro + peperoncino","Riso (50g)","Avocado (30g)"],kcal:520,p:22,c:68,g:14,t:["v","vg","gf","lf"],tip:"Perfetto per meal prep: migliora il giorno dopo.",shop:[s("prot","Fagioli misti"),s("cond","Passata di pomodoro"),s("cer","Riso basmati"),s("fv","Avocado")]},
+    {id:"d22",title:"Pasta al Pesto & Verdure",items:["Pasta integrale (80g)","Pesto (20g)","Zucchine grigliate (150g)","Pinoli (10g)"],kcal:530,p:18,c:60,g:24,t:["v"],shop:[s("cer","Pasta integrale"),s("cond","Pesto genovese"),s("fv","Zucchine")]},
+  ],
+  social:[
+    {id:"soc1",title:"🥂 Ristorante",items:["Proteina + verdura base","Piatto a scelta","1-2 drink o dolce"],kcal:1200,p:45,c:100,g:50,t:["v","vg","gf","lf"],tip:"Spuntino proteico prima.",shop:[]},
+    {id:"soc2",title:"🍕 Pizza Night",items:["1 pizza","Insalata antipasto","1 birra o vino"],kcal:1100,p:35,c:120,g:40,t:["v"],tip:"Insalata prima: le fibre rallentano il picco glicemico.",shop:[]},
+    {id:"soc3",title:"🍣 Sushi",items:["10-12 pezzi nigiri/maki","Edamame","1 birra o tè"],kcal:950,p:40,c:110,g:20,t:["gf","lf"],tip:"Attenzione al riso (alto IG). Preferisci nigiri ai roll fritti.",shop:[]},
+    {id:"soc4",title:"🍷 Aperitivo",items:["Spritz/vino (1-2)","Tagliere (80g)","Grissini"],kcal:800,p:25,c:40,g:40,t:[],tip:"Alterna drink e acqua.",shop:[]},
+    {id:"soc5",title:"🍝 Trattoria",items:["Un primo","Contorno verdure","1 calice vino"],kcal:900,p:28,c:90,g:30,t:["v"],tip:"Chiedi porzione ridotta, oppure rinuncia al pane.",shop:[]},
+    {id:"soc6",title:"🍔 Burger Night",items:["1 hamburger completo","Patatine condivise","1 birra o bibita"],kcal:1050,p:40,c:90,g:45,t:[],tip:"Salta il formaggio extra e il bacon: risparmi ~200 kcal.",shop:[]},
+  ]
+  }
+}();
+const SC=[
+  {id:"sc1",title:"Buffer Light",items:["Yogurt greco 0% (150g)","Frutti di bosco","Miele"],kcal:180,p:18,c:22,g:2,t:["v","gf"],shop:[]},
+  {id:"sc2",title:"Caffè & Frutta",items:["1 caffè","1 banana","Yogurt (100g)"],kcal:200,p:12,c:32,g:3,t:["v","gf"],shop:[]},
+  {id:"sc3",title:"Buffer Vegano",items:["Latte vegetale (200ml)","1 banana"],kcal:170,p:6,c:32,g:3,t:["v","vg","gf","lf"],shop:[]},
+];
+const SS1=[{id:"ss1a",title:"Agrumi",items:["1 arancia"],kcal:70,p:1,c:16,g:0,t:["v","vg","gf","lf"],shop:[]},{id:"ss1b",title:"Caffè & Biscotto",items:["1 caffè","1 biscotto integrale"],kcal:80,p:1,c:14,g:2,t:["v","lf"],shop:[]}];
+const SP=[
+  {id:"sp1",title:"Insalatona Buffer",items:["Tonno (120g)","Verdure (250g)","Ceci (60g)"],kcal:420,p:40,c:24,g:16,t:["gf","lf"],shop:[]},
+  {id:"sp2",title:"Pollo & Verdure",items:["Pollo (150g)","Verdure vapore (250g)"],kcal:350,p:42,c:10,g:12,t:["gf","lf"],shop:[]},
+  {id:"sp3",title:"Hummus Bowl",items:["Hummus (60g)","Verdure (250g)","Ceci (60g)"],kcal:380,p:18,c:34,g:16,t:["v","vg","gf","lf"],shop:[]},
+];
+const SS2=[
+  {id:"ss2a",title:"Pre-Uscita",items:["1 uovo sodo o yogurt"],kcal:90,p:10,c:2,g:5,t:["v","gf","lf"],shop:[]},
+  {id:"ss2b",title:"Shake Leggero",items:["Whey (20g) + acqua"],kcal:80,p:18,c:1,g:1,t:["v","gf"],shop:[]},
+  {id:"ss2c",title:"Frutta secca",items:["Mandorle (20g) + 1 dattero"],kcal:110,p:3,c:14,g:6,t:["v","vg","gf","lf"],shop:[]},
+];
+
+/* ═══ CUSTOM MEAL OBJECT ═══ */
+/* Stored per (dayIdx, slotKey) in a single localStorage blob */
+const DEFAULT_CUSTOM={title:"Pasto libero",kcal:400,p:20,c:40,g:15,notes:""};
+
+function makeCustomMeal(custom){
+  const c=custom||DEFAULT_CUSTOM;
+  return{
+    id:CUSTOM_ID,
+    title:c.title||"Pasto libero",
+    items:c.notes?[c.notes]:["Inserisci qui il tuo pasto personalizzato","I valori di kcal e macro sono modificabili","Utile per piatti gestiti fuori dal database"],
+    kcal:Number(c.kcal)||0,
+    p:Number(c.p)||0,
+    c:Number(c.c)||0,
+    g:Number(c.g)||0,
+    t:["v","vg","gf","lf"],
+    tip:"Pasto gestito in autonomia. Modifica kcal e macro nel pannello.",
+    shop:[],
+    isCustom:true
+  };
+}
+
+/* ═══ CALC ═══ */
+function calcBmr(p){const b=10*p.weight+6.25*p.height-5*p.age;return Math.round(p.sex==="M"?b+5:b-161)}
+function calcTdee(p){return Math.round(calcBmr(p)*(ACT.find(a=>a.id===p.activity)||ACT[2]).f)}
+function calcTgt(p){return Math.round(calcTdee(p)*(1-(DEFL.find(d=>d.id===p.deficit)||DEFL[1]).p))}
+function calcMacros(p){const t=calcTgt(p),pG=Math.round(p.weight*1.8),fG=Math.round(p.weight*.9),cG=Math.round(Math.max(t-pG*4-fG*9,200)/4);return{target:t,pG,fG,cG}}
+function slotScale(slot,prof){const d=DIST.find(x=>x.id===prof.dist)||DIST[0];const w=d.w[slot]||0;if(w===0)return 0;return(calcTgt(prof)*w/100)/(BASE_AVG[slot]||400)}
+function isSlotActive(slot,prof){const d=DIST.find(x=>x.id===prof.dist)||DIST[0];return(d.w[slot]||0)>0}
+function slotTargetKcal(slot,prof){const d=DIST.find(x=>x.id===prof.dist)||DIST[0];return Math.round(calcTgt(prof)*(d.w[slot]||0)/100)}
+
+/* ═══ HELPERS ═══ */
+function find(pool,id){return pool.find(m=>m.id===id)||pool[0]}
+function lp(){try{const s=localStorage.getItem(PK);if(s)return{...defProf,...JSON.parse(s)}}catch(e){}return{...defProf}}
+function lw(){try{const s=localStorage.getItem(WK);if(s)return JSON.parse(s)}catch(e){}return[]}
+function lc(){try{const s=localStorage.getItem(CK);if(s)return JSON.parse(s)}catch(e){}return{}}
+function customKey(dayIdx,slot){return`${dayIdx}-${slot}`}
+function initSel(){try{const s=localStorage.getItem(SK);if(s){const p=JSON.parse(s);if(p&&p[0])return p}}catch(e){}const r={};DN.forEach((_,i)=>{r[i]={social:false,colazione:M.colazione[i%M.colazione.length].id,spuntino1:M.spuntino1[i%M.spuntino1.length].id,pranzo:M.pranzo[i%M.pranzo.length].id,spuntino2:M.spuntino2[i%M.spuntino2.length].id,cena:M.cena[i%M.cena.length].id,socialCena:M.social[0].id,socialColazione:SC[0].id,socialSpuntino1:SS1[0].id,socialPranzo:SP[0].id,socialSpuntino2:SS2[0].id}});return r}
+function filt(pool,filters){if(!filters||!filters.length)return pool;const r=pool.filter(m=>filters.every(f=>m.t&&m.t.includes(f)));return r.length?r:pool}
+/* Pool with custom option appended */
+function pwc(pool,filters){return[...filt(pool,filters),{id:CUSTOM_ID,title:"✏️ Pasto libero (inserisci tu)",kcal:0,t:["v","vg","gf","lf"]}]}
+
+function getMeals(sel,i,filters,customs){
+  const s=sel[i];
+  const resolve=(pool,id,slotName)=>{
+    if(id===CUSTOM_ID){const c=customs[customKey(i,slotName)];return makeCustomMeal(c)}
+    return find(pool,id);
+  };
+  if(s.social)return{
+    colazione:resolve(SC,s.socialColazione,"colazione"),
+    spuntino1:resolve(SS1,s.socialSpuntino1,"spuntino1"),
+    pranzo:resolve(SP,s.socialPranzo,"pranzo"),
+    spuntino2:resolve(SS2,s.socialSpuntino2,"spuntino2"),
+    cena:resolve(M.social,s.socialCena,"cena")
+  };
+  return{
+    colazione:resolve(M.colazione,s.colazione,"colazione"),
+    spuntino1:resolve(M.spuntino1,s.spuntino1,"spuntino1"),
+    pranzo:resolve(M.pranzo,s.pranzo,"pranzo"),
+    spuntino2:resolve(M.spuntino2,s.spuntino2,"spuntino2"),
+    cena:resolve(M.cena,s.cena,"cena")
+  };
+}
+
+function dayKcal(sel,i,prof,customs){
+  const meals=getMeals(sel,i,prof.filters||[],customs);
+  let total=0;
+  SLOTS.forEach(slot=>{
+    if(!isSlotActive(slot,prof))return;
+    const meal=meals[slot];
+    // Custom meals: kcal is absolute, not scaled
+    total+=meal.isCustom?meal.kcal:Math.round(meal.kcal*slotScale(slot,prof));
+  });
+  return total;
+}
+
+function buildShop(sel,prof,customs){const map={};const filters=prof.filters||[];for(let i=0;i<7;i++){const ms=getMeals(sel,i,filters,customs);SLOTS.forEach(slot=>{if(!isSlotActive(slot,prof))return;(ms[slot].shop||[]).forEach(({cat,item})=>{const k=cat+"||"+item;if(!map[k])map[k]={cat,item,days:[]};map[k].days.push(DS[i])})})}const g={};Object.values(map).forEach(e=>{if(!g[e.cat])g[e.cat]=[];g[e.cat].push(e)});return g}
+
+/* ═══ WEIGHT CHART ═══ */
+function WeightChart({entries,goalWeight}){
+  if(!entries.length)return<div style={{textAlign:"center",padding:"40px 20px",color:"#b0a89e",fontSize:14}}>Aggiungi la prima pesata per il grafico</div>;
+  const sorted=[...entries].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const ws=sorted.map(e=>e.weight);const minW=Math.min(...ws,goalWeight)-2,maxW=Math.max(...ws)+2,range=maxW-minW||1;
+  const W=640,H=260,PX=50,PY=20,cW=W-PX*2,cH=H-PY*2;
+  const pts=sorted.map((e,i)=>({x:PX+(sorted.length>1?i/(sorted.length-1):.5)*cW,y:PY+(1-(e.weight-minW)/range)*cH}));
+  const goalY=PY+(1-(goalWeight-minW)/range)*cH;
+  const path=pts.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ');
+  const steps=5;const yL=[];for(let i=0;i<=steps;i++){const v=minW+range*(i/steps);yL.push({y:PY+(1-i/steps)*cH,l:Math.round(v)})}
+  return(<svg viewBox={`0 0 ${W} ${H+20}`} style={{width:"100%"}}>
+    {yL.map((l,i)=><g key={i}><line x1={PX} y1={l.y} x2={W-PX} y2={l.y} stroke="#e8e4de" strokeWidth=".5"/><text x={PX-8} y={l.y+4} textAnchor="end" fill="#b0a89e" fontSize="10" fontFamily="DM Sans">{l.l}</text></g>)}
+    <line x1={PX} y1={goalY} x2={W-PX} y2={goalY} stroke="#E07B9B" strokeWidth="1.5" strokeDasharray="6 4" opacity=".7"/>
+    <text x={W-PX+6} y={goalY+4} fill="#E07B9B" fontSize="10" fontWeight="600" fontFamily="DM Sans">{goalWeight}kg</text>
+    {pts.length>1&&<path d={path} fill="none" stroke="#7B5EA7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>}
+    {pts.map((p,i)=><g key={i}><circle cx={p.x} cy={p.y} r="5" fill="#7B5EA7" stroke="#fff" strokeWidth="2"/><text x={p.x} y={p.y-12} textAnchor="middle" fill="#5a5550" fontSize="10" fontWeight="600" fontFamily="DM Sans">{sorted[i].weight}</text></g>)}
+    {sorted.length>0&&sorted.map((e,i)=>{if(sorted.length<=7||i%(Math.ceil(sorted.length/6))===0||i===sorted.length-1)return<text key={i} x={pts[i].x} y={H+12} textAnchor="middle" fill="#b0a89e" fontSize="9" fontFamily="DM Sans">{e.date.split('-').slice(1).reverse().join('/')}</text>;return null})}
+  </svg>);
+}
+function WeightTracker({profile}){
+  const[entries,setE]=useState(lw),[nw,setNw]=useState(''),[nd,setNd]=useState(new Date().toISOString().split('T')[0]);
+  useEffect(()=>{try{localStorage.setItem(WK,JSON.stringify(entries))}catch(e){}},[entries]);
+  const add=()=>{const w=parseFloat(nw);if(!w||w<30||w>300)return;setE(p=>[...p.filter(e=>e.date!==nd),{date:nd,weight:w}]);setNw('')};
+  const sorted=[...entries].sort((a,b)=>new Date(b.date)-new Date(a.date));const latest=sorted[0];
+  const delta=latest?Math.round((latest.weight-profile.goalWeight)*10)/10:null;
+  return(<div style={{display:"flex",flexDirection:"column",gap:14}}>
+    {latest&&<div style={{background:"linear-gradient(135deg,#7B5EA7,#9B7EC8)",borderRadius:20,padding:"18px 20px",color:"#fff"}}>
+      <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",opacity:.6}}>Ultimo peso</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:6}}>
+        <div style={{fontFamily:"'Fraunces',serif",fontSize:32,fontWeight:800}}>{latest.weight} <span style={{fontSize:16,fontWeight:500}}>kg</span></div>
+        <div style={{textAlign:"right"}}><div style={{fontSize:13,opacity:.8}}>{delta>0?`−${delta} kg al traguardo`:"Obiettivo raggiunto!"}</div><div style={{fontSize:11,opacity:.5}}>{latest.date.split('-').reverse().join('/')}</div></div>
+      </div>
+    </div>}
+    <div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}>
+      <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:12}}>Andamento</div>
+      <WeightChart entries={entries} goalWeight={profile.goalWeight}/>
+    </div>
+    <div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}>
+      <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Aggiungi pesata</div>
+      <div style={{display:"flex",gap:8}}><input type="date" value={nd} onChange={e=>setNd(e.target.value)} style={{flex:1}}/><input type="number" step="0.1" placeholder="kg" value={nw} onChange={e=>setNw(e.target.value)} style={{width:80}}/><button onClick={add} style={{padding:"10px 18px",borderRadius:10,border:"none",background:"#7B5EA7",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>+</button></div>
+    </div>
+    {sorted.length>0&&<div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}>
+      <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Storico ({sorted.length})</div>
+      {sorted.slice(0,20).map((e,i)=><div key={e.date} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<Math.min(sorted.length,20)-1?"1px solid #f5f3ee":"none"}}>
+        <div><span style={{fontSize:14,fontWeight:600}}>{e.weight} kg</span><span style={{fontSize:12,color:"#b0a89e",marginLeft:8}}>{e.date.split('-').reverse().join('/')}</span></div>
+        <button onClick={()=>setE(p=>p.filter(x=>x.date!==e.date))} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e8e4de",background:"transparent",fontSize:12,color:"#C4563A",cursor:"pointer",fontWeight:600}}>✕</button>
+      </div>)}
+    </div>}
+  </div>);
+}
+
+/* ═══ UI COMPONENTS ═══ */
+function Pill({label,value,unit,color}){return<span style={{display:"inline-flex",alignItems:"center",gap:3,background:color+"18",color,padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>{label} <b>{value}</b>{unit}</span>}
+function SliderC({label,value,min,max,step,unit,color,onChange}){
+  return(<div style={{marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}><span style={{fontSize:13,fontWeight:600,color:"#5a5550"}}>{label}</span><span style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,color}}>{value}<span style={{fontSize:12,fontWeight:500,color:"#8a8580"}}> {unit}</span></span></div>
+  <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(Number(e.target.value))} style={{background:`linear-gradient(to right,${color} 0%,${color} ${((value-min)/(max-min))*100}%,#e8e4de ${((value-min)/(max-min))*100}%,#e8e4de 100%)`}}/><style>{`input[type=range]::-webkit-slider-thumb{background:${color}}`}</style>
+  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#b0a89e",marginTop:3}}><span>{min}{unit}</span><span>{max}{unit}</span></div></div>);
+}
+function OptBtns({options,value,onChange,color}){return(<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{options.map(o=><button key={o.id} onClick={()=>onChange(o.id)} style={{flex:1,minWidth:85,padding:"10px 6px",borderRadius:12,border:value===o.id?`2px solid ${color}`:"2px solid #e8e4de",background:value===o.id?color+"12":"#fff",cursor:"pointer",textAlign:"center",transition:"all .2s"}}><div style={{fontSize:12,fontWeight:700,color:value===o.id?color:"#5a5550"}}>{o.label}</div>{o.desc&&<div style={{fontSize:10,color:"#8a8580",marginTop:2}}>{o.desc}</div>}</button>)}</div>)}
+
+/* ═══ CUSTOM MEAL EDITOR ═══ */
+function CustomMealEditor({custom,onChange,accent,suggestedKcal}){
+  const c=custom||DEFAULT_CUSTOM;
+  const upd=(k,v)=>onChange({...c,[k]:v});
+  return(<div style={{background:accent+"08",borderRadius:12,padding:14,border:`1.5px solid ${accent}30`,marginBottom:10}}>
+    <div style={{fontSize:11,fontWeight:700,color:accent,textTransform:"uppercase",letterSpacing:".08em",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <span>✏️ Pasto Libero</span>
+      <span style={{fontSize:10,color:"#8a8580",fontWeight:500,textTransform:"none",letterSpacing:0}}>target: ~{suggestedKcal} kcal</span>
+    </div>
+    <input type="text" placeholder="Nome del pasto (es. Pranzo con la famiglia)" value={c.title||""} onChange={e=>upd("title",e.target.value)} style={{marginBottom:8}}/>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+      <div><label style={{fontSize:10,color:"#8a8580",fontWeight:600,display:"block",marginBottom:2}}>KCAL</label><input type="number" min="0" max="3000" value={c.kcal||0} onChange={e=>upd("kcal",Number(e.target.value))}/></div>
+      <div><label style={{fontSize:10,color:"#8a8580",fontWeight:600,display:"block",marginBottom:2}}>PROTEINE (g)</label><input type="number" min="0" max="200" value={c.p||0} onChange={e=>upd("p",Number(e.target.value))}/></div>
+      <div><label style={{fontSize:10,color:"#8a8580",fontWeight:600,display:"block",marginBottom:2}}>CARBOIDRATI (g)</label><input type="number" min="0" max="300" value={c.c||0} onChange={e=>upd("c",Number(e.target.value))}/></div>
+      <div><label style={{fontSize:10,color:"#8a8580",fontWeight:600,display:"block",marginBottom:2}}>GRASSI (g)</label><input type="number" min="0" max="150" value={c.g||0} onChange={e=>upd("g",Number(e.target.value))}/></div>
+    </div>
+    <input type="text" placeholder="Note (ingredienti, descrizione...)" value={c.notes||""} onChange={e=>upd("notes",e.target.value)}/>
+    <div style={{fontSize:11,color:"#8a8580",marginTop:8,lineHeight:1.4}}>💡 I valori qui inseriti sono già assoluti e non vengono scalati. Inserisci il totale del pasto.</div>
+  </div>);
+}
+
+function DistPanel({dist,onChange,target}){
+  const cur=DIST.find(d=>d.id===dist)||DIST[0];
+  return(<div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}>
+    <div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Distribuzione calorica</div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      {DIST.map(d=><button key={d.id} onClick={()=>onChange(d.id)} style={{padding:"8px 12px",borderRadius:12,border:dist===d.id?"2px solid #7B5EA7":"2px solid #e8e4de",background:dist===d.id?"#F0EBF7":"#fff",cursor:"pointer",textAlign:"left",transition:"all .2s",flex:"1 1 45%",minWidth:140}}>
+        <div style={{fontSize:13,fontWeight:700,color:dist===d.id?"#7B5EA7":"#5a5550"}}>{d.label}</div>
+        <div style={{fontSize:10,color:"#8a8580",marginTop:2}}>{d.desc}</div>
+      </button>)}
+    </div>
+    <div style={{display:"flex",borderRadius:10,overflow:"hidden",height:32,marginBottom:8}}>
+      {SLOTS.map((slot,i)=>{const w=cur.w[slot];if(!w)return null;const colors=["#4A7C59","#D4A13A","#C4563A","#7B5EA7","#E8943A"];return<div key={slot} style={{flex:w,background:colors[i],display:"flex",alignItems:"center",justifyContent:"center"}}>{w>=12&&<span style={{fontSize:10,fontWeight:700,color:"#fff"}}>{MM[slot].icon} {Math.round(target*w/100)}</span>}</div>})}
+    </div>
+    <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"center"}}>
+      {SLOTS.map((slot,i)=>{const w=cur.w[slot];const colors=["#4A7C59","#D4A13A","#C4563A","#7B5EA7","#E8943A"];return<span key={slot} style={{fontSize:10,color:w?colors[i]:"#ccc",fontWeight:600,display:"flex",alignItems:"center",gap:2}}><span style={{width:8,height:8,borderRadius:4,background:w?colors[i]:"#e8e4de"}}></span>{MM[slot].label} {w?`${w}%`:"off"}</span>})}
+    </div>
+  </div>);
+}
+
+function ProfilePanel({profile:p,setProfile:setP}){
+  const set=(k,v)=>setP(prev=>({...prev,[k]:v}));
+  const b=calcBmr(p),td=calcTdee(p),{target,pG,fG,cG}=calcMacros(p);
+  const defPct=(DEFL.find(d=>d.id===p.deficit)||DEFL[1]).p,dailyDef=Math.round(td*defPct),wl=(dailyDef*7)/7700;
+  const kl=p.weight-p.goalWeight,weeks=kl>0&&wl>0?Math.round(kl/wl):0;
+  return(<div style={{display:"flex",flexDirection:"column",gap:16}}>
+    <div style={{background:"linear-gradient(135deg,#2a2520,#4a4540)",borderRadius:20,padding:20,color:"#fff"}}>
+      <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",opacity:.6,marginBottom:8}}>Il tuo fabbisogno</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:14}}>
+        <div style={{textAlign:"center"}}><div style={{fontSize:10,opacity:.5}}>BMR</div><div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700}}>{b}</div></div>
+        <div style={{textAlign:"center"}}><div style={{fontSize:10,opacity:.5}}>TDEE</div><div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700}}>{td}</div></div>
+        <div style={{textAlign:"center"}}><div style={{fontSize:10,opacity:.5}}>TARGET</div><div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:800,color:"#7dd3a8"}}>{target}</div></div>
+      </div>
+      <div style={{display:"flex",justifyContent:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><Pill label="P" value={pG} unit="g" color="#E07B5B"/><Pill label="C" value={cG} unit="g" color="#D4A13A"/><Pill label="G" value={fG} unit="g" color="#5B8A72"/></div>
+      {weeks>0&&<div style={{textAlign:"center",marginTop:12,fontSize:12,opacity:.7}}>Deficit: <b>{dailyDef} kcal/g</b> · ~<b>{wl.toFixed(1)} kg/sett</b> · Obiettivo in <b style={{color:"#7dd3a8"}}>~{weeks} sett</b> (~{Math.round(weeks/4.33)} mesi)</div>}
+    </div>
+    <div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}><div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Sesso biologico</div>
+      <div style={{display:"flex",gap:8}}>{[{id:"F",l:"👩 Donna"},{id:"M",l:"👨 Uomo"}].map(x=><button key={x.id} onClick={()=>set("sex",x.id)} style={{flex:1,padding:12,borderRadius:12,border:p.sex===x.id?"2px solid #7B5EA7":"2px solid #e8e4de",background:p.sex===x.id?"#F0EBF7":"#fff",fontSize:15,fontWeight:700,color:p.sex===x.id?"#7B5EA7":"#8a8580",cursor:"pointer"}}>{x.l}</button>)}</div>
+    </div>
+    <div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}><div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:14}}>Dati antropometrici</div>
+      <SliderC label="Età" value={p.age} min={16} max={70} step={1} unit="anni" color="#7B5EA7" onChange={v=>set("age",v)}/>
+      <SliderC label="Altezza" value={p.height} min={140} max={210} step={1} unit="cm" color="#4A7C59" onChange={v=>set("height",v)}/>
+      <SliderC label="Peso attuale" value={p.weight} min={40} max={180} step={.5} unit="kg" color="#C4563A" onChange={v=>set("weight",v)}/>
+      <SliderC label="Peso obiettivo" value={p.goalWeight} min={40} max={150} step={.5} unit="kg" color="#E07B9B" onChange={v=>set("goalWeight",v)}/>
+    </div>
+    <div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}><div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Attività</div>
+      <OptBtns options={ACT.map(a=>({id:a.id,label:a.label,desc:a.desc}))} value={p.activity} onChange={v=>set("activity",v)} color="#E8943A"/>
+    </div>
+    <div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}><div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Deficit</div>
+      <OptBtns options={DEFL.map(d=>({id:d.id,label:d.label,desc:d.desc}))} value={p.deficit} onChange={v=>set("deficit",v)} color="#C4563A"/>
+    </div>
+    <DistPanel dist={p.dist||"balanced"} onChange={v=>set("dist",v)} target={target}/>
+    <div style={{background:"#fff",borderRadius:16,padding:16,border:"1.5px solid #f0ede8"}}><div style={{fontSize:12,fontWeight:600,color:"#8a8580",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Filtri alimentari</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{FD.map(f=>{const on=(p.filters||[]).includes(f.id);return<button key={f.id} onClick={()=>set("filters",on?(p.filters||[]).filter(x=>x!==f.id):[...(p.filters||[]),f.id])} style={{padding:"8px 14px",borderRadius:12,border:on?`2px solid ${f.c}`:"2px solid #e8e4de",background:on?f.c+"15":"#fff",fontSize:13,fontWeight:on?700:500,color:on?f.c:"#8a8580",cursor:"pointer"}}>{f.label}</button>})}</div>
+    </div>
+  </div>);
+}
+
+function MealSlot({sk,meal,accent,options,selId,onSel,isOpen,onTog,sc,tgtKcal,custom,onCustomChange}){
+  const meta=MM[sk];const isCustom=meal.isCustom;
+  const sK=isCustom?meal.kcal:Math.round(meal.kcal*sc);
+  const sP=isCustom?meal.p:Math.round(meal.p*sc);
+  const sC=isCustom?meal.c:Math.round(meal.c*sc);
+  const sG=isCustom?meal.g:Math.round(meal.g*sc);
+  return(<div style={{background:"#fff",borderRadius:16,padding:"14px 16px",border:`1.5px solid ${isOpen?accent+"50":"#f0ede8"}`,boxShadow:isOpen?`0 4px 20px ${accent}15`:"0 1px 4px rgba(0,0,0,.04)",transition:"all .3s",position:"relative",overflow:"hidden"}}>
+    {isOpen&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${accent},${accent}88)`}}/>}
+    <div onClick={onTog} style={{cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:20}}>{isCustom?"✏️":meta.icon}</span><div><div style={{fontSize:10,fontWeight:600,color:accent,textTransform:"uppercase",letterSpacing:".08em"}}>{meta.label} <span style={{opacity:.6}}>({tgtKcal})</span></div><div style={{fontSize:15,fontWeight:700,color:"#2a2520",fontFamily:"'Fraunces',serif",lineHeight:1.2,marginTop:1}}>{meal.title}</div></div></div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{background:accent+"15",color:accent,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>{sK}</span><span style={{fontSize:14,color:accent,transform:isOpen?"rotate(180deg)":"",transition:"transform .3s",display:"inline-block"}}>▾</span></div>
+    </div>
+    <div style={{maxHeight:isOpen?800:0,opacity:isOpen?1:0,overflow:"hidden",transition:"all .4s cubic-bezier(.4,0,.2,1)",marginTop:isOpen?12:0}}>
+      <div style={{borderTop:"1px dashed #e8e4de",paddingTop:10}}>
+        {options.length>1&&<select value={selId} onChange={e=>onSel(e.target.value)} style={{width:"100%",padding:"10px 36px 10px 12px",borderRadius:12,border:`1.5px solid ${accent}40`,background:accent+"08",fontSize:14,fontWeight:600,color:"#2a2520",cursor:"pointer",outline:"none",marginBottom:10,backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${encodeURIComponent(accent)}' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center"}}>{options.map(o=><option key={o.id} value={o.id}>{o.id===CUSTOM_ID?o.title:`${o.title} — ${Math.round(o.kcal*sc)} kcal`}</option>)}</select>}
+        {isCustom?<CustomMealEditor custom={custom} onChange={onCustomChange} accent={accent} suggestedKcal={tgtKcal}/>:<>
+          {meal.t&&meal.t.length>0&&<div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>{meal.t.map(tag=>{const fd=FD.find(f=>f.id===tag);return fd?<span key={tag} style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:fd.c+"15",color:fd.c,fontWeight:600}}>{fd.label}</span>:null})}</div>}
+          {meal.items.map((item,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:7,padding:"4px 0",fontSize:14,color:"#5a5550",lineHeight:1.5}}><span style={{color:accent,fontSize:7,marginTop:7}}>●</span>{item}</div>)}
+        </>}
+        <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}><Pill label="P" value={sP} unit="g" color="#E07B5B"/><Pill label="C" value={sC} unit="g" color="#D4A13A"/><Pill label="G" value={sG} unit="g" color="#5B8A72"/></div>
+        {meal.tip&&!isCustom&&<div style={{marginTop:10,padding:"10px 12px",background:accent+"0A",borderRadius:10,borderLeft:`3px solid ${accent}40`,fontSize:13,color:"#6b6560",fontStyle:"italic",lineHeight:1.5}}>💡 {meal.tip}</div>}
+      </div>
+    </div>
+  </div>);
+}
+
+function WBar({cur,tar}){const pct=Math.min((cur/tar)*100,110),diff=cur-tar,over=diff>300,under=diff<-500,col=over?"#C4563A":under?"#D4A13A":"#4A7C59";
+  return(<div style={{background:"#fff",borderRadius:18,padding:"16px 18px",marginBottom:16,border:"1.5px solid #f0ede8"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}><div style={{fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:".1em",color:"#b0a89e"}}>Bilancio Settimanale</div><div style={{fontFamily:"'Fraunces',serif",fontSize:13,fontWeight:700,color:col}}>{diff>0?"+":""}{diff} kcal</div></div>
+    <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:800,marginBottom:8}}>{cur.toLocaleString("it-IT")} <span style={{fontSize:13,fontWeight:500,color:"#8a8580"}}>/ {tar.toLocaleString("it-IT")}</span></div>
+    <div style={{background:"#f0ede8",borderRadius:10,height:10,overflow:"hidden"}}><div style={{width:`${Math.min(pct,100)}%`,height:"100%",background:`linear-gradient(90deg,${col}cc,${col})`,borderRadius:10,transition:"width .5s"}}/></div>
+    <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:10,color:"#b0a89e"}}><span>0</span><span style={{fontWeight:600,color:col}}>{over?"⚠️ Sopra":under?"⚠️ Basso":"✓ In target"}</span><span>{tar.toLocaleString("it-IT")}</span></div>
+  </div>);
+}
+
+function ShopList({sel,prof,customs}){
+  const grouped=useMemo(()=>buildShop(sel,prof,customs),[sel,prof,customs]);
+  const[chk,setChk]=useState({});const tog=k=>setChk(p=>({...p,[k]:!p[k]}));
+  const cats=["prot","latt","cer","fv","cond","surg"];
+  if(!cats.some(c=>grouped[c]&&grouped[c].length))return<div style={{textAlign:"center",padding:40,color:"#b0a89e"}}>Nessun ingrediente<br/><span style={{fontSize:11}}>(i pasti liberi non generano lista)</span></div>;
+  return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{cats.map(ck=>{const items=grouped[ck];if(!items||!items.length)return null;
+    return(<div key={ck} style={{background:"#fff",borderRadius:16,padding:"14px 16px",border:"1.5px solid #f0ede8"}}>
+      <div style={{fontSize:14,fontWeight:700,fontFamily:"'Fraunces',serif",marginBottom:8,paddingBottom:6,borderBottom:"1px dashed #e8e4de"}}>{CAT[ck]}</div>
+      {items.map((it,idx)=>{const k=ck+it.item;const done=chk[k];return(<div key={idx} onClick={()=>tog(k)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",cursor:"pointer",borderBottom:idx<items.length-1?"1px solid #faf8f5":"none",opacity:done?.4:1}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:22,height:22,borderRadius:6,border:done?"2px solid #4A7C59":"2px solid #d0cbc4",background:done?"#4A7C59":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{done&&<span style={{color:"#fff",fontSize:12,fontWeight:700}}>✓</span>}</div><span style={{fontSize:14,textDecoration:done?"line-through":"none"}}>{it.item}</span></div>
+        <span style={{fontSize:11,color:"#b0a89e",whiteSpace:"nowrap",marginLeft:8}}>{[...new Set(it.days)].join(", ")}</span></div>)})}
+    </div>)})}</div>);
+}
+
+/* ═══ MAIN APP ═══ */
+function App(){
+  const[ad,setAd]=useState(0),[sel,setSel]=useState(initSel),[os,setOs]=useState(null),[tab,setTab]=useState("planner"),[prof,setProf]=useState(lp),[customs,setCustoms]=useState(lc),[saving,setSav]=useState(false);
+  useEffect(()=>{try{localStorage.setItem(SK,JSON.stringify(sel))}catch(e){}},[sel]);
+  useEffect(()=>{try{localStorage.setItem(PK,JSON.stringify(prof))}catch(e){}},[prof]);
+  useEffect(()=>{try{localStorage.setItem(CK,JSON.stringify(customs))}catch(e){}},[customs]);
+
+  const{target}=calcMacros(prof);const wTar=target*7;const filters=prof.filters||[];
+  const upd=(d,k,v)=>setSel(p=>({...p,[d]:{...p[d],[k]:v}}));
+  const togSoc=d=>{setSel(p=>({...p,[d]:{...p[d],social:!p[d].social}}));setOs(null)};
+  const updCustom=(dayIdx,slot,newCustom)=>setCustoms(p=>({...p,[customKey(dayIdx,slot)]:newCustom}));
+  const wTot=useMemo(()=>{let t=0;for(let i=0;i<7;i++)t+=dayKcal(sel,i,prof,customs);return t},[sel,prof,customs]);
+
+  const meals=getMeals(sel,ad,filters,customs);const dK=dayKcal(sel,ad,prof,customs);
+  const s=sel[ad];const accent=DC[ad];const isSoc=s.social;
+
+  const activeSlots=SLOTS.filter(sl=>isSlotActive(sl,prof));
+  const slotCfg=(isSoc?[
+    {key:"colazione",opts:pwc(SC,filters),sk:"socialColazione"},{key:"spuntino1",opts:pwc(SS1,filters),sk:"socialSpuntino1"},
+    {key:"pranzo",opts:pwc(SP,filters),sk:"socialPranzo"},{key:"spuntino2",opts:pwc(SS2,filters),sk:"socialSpuntino2"},
+    {key:"cena",opts:pwc(M.social,filters),sk:"socialCena"},
+  ]:[
+    {key:"colazione",opts:pwc(M.colazione,filters),sk:"colazione"},{key:"spuntino1",opts:pwc(M.spuntino1,filters),sk:"spuntino1"},
+    {key:"pranzo",opts:pwc(M.pranzo,filters),sk:"pranzo"},{key:"spuntino2",opts:pwc(M.spuntino2,filters),sk:"spuntino2"},
+    {key:"cena",opts:pwc(M.cena,filters),sk:"cena"},
+  ]).filter(c=>activeSlots.includes(c.key));
+
+  const doDownload=useCallback(()=>{setSav(true);setTimeout(()=>{
+    const h=`<!DOCTYPE html><html><head><meta charset=utf-8><title>Piano</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'DM Sans',sans-serif;color:#2a2520;padding:20px;font-size:11px;line-height:1.5}h1{font-size:20px;text-align:center;margin-bottom:4px}.sub{text-align:center;color:#8a8580;font-size:10px;margin-bottom:12px}.day{margin-bottom:10px;border:1px solid #e8e4de;border-radius:8px;padding:8px 12px}.dh{display:flex;justify-content:space-between;margin-bottom:4px;border-bottom:1px solid #f0ede8;padding-bottom:4px;font-weight:700}.ms{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}.ml{font-size:8px;font-weight:600;text-transform:uppercase;color:#b0a89e}.mt{font-weight:700;font-size:11px}.mi{font-size:9px;color:#5a5550}.wb{text-align:center;margin-bottom:12px;padding:6px;background:#f8f6f3;border-radius:6px;font-weight:700;font-size:14px}.shop{page-break-before:always}.shop h2{font-size:16px;text-align:center;margin-bottom:8px}.sc{margin-bottom:6px}.sct{font-weight:700;font-size:11px;border-bottom:1px solid #e8e4de;padding-bottom:2px;margin-bottom:2px}.si{display:flex;justify-content:space-between;padding:1px 0;font-size:10px}.ch{display:inline-block;width:10px;height:10px;border:1px solid #ccc;border-radius:2px;margin-right:5px;vertical-align:middle}</style></head><body>`+
+    `<h1>🍽️ Piano Settimanale</h1><div class=sub>👤 ${prof.sex==="F"?"F":"M"} ${prof.age}a · ${prof.height}cm · ${prof.weight}→${prof.goalWeight}kg · 🎯${target}kcal · ${(DIST.find(d=>d.id===prof.dist)||DIST[0]).label}</div>`+
+    `<div class=wb>${wTot.toLocaleString("it-IT")} / ${wTar.toLocaleString("it-IT")} kcal</div>`+
+    Array.from({length:7},(_,i)=>{const ms=getMeals(sel,i,filters,customs);const d=dayKcal(sel,i,prof,customs);return`<div class=day><div class=dh><span>${DE[i]} ${DN[i]}${sel[i].social?' 🥂':''}</span><span style="color:#4A7C59">${d} kcal</span></div><div class=ms>${activeSlots.map(sk=>{const m=ms[sk];const sc=slotScale(sk,prof);const k=m.isCustom?m.kcal:Math.round(m.kcal*sc);const pv=m.isCustom?m.p:Math.round(m.p*sc);const cv=m.isCustom?m.c:Math.round(m.c*sc);const gv=m.isCustom?m.g:Math.round(m.g*sc);return`<div><div class=ml>${m.isCustom?"✏️":MM[sk].icon} ${MM[sk].label}</div><div class=mt>${m.title}</div><div class=mi>${m.items.join(' · ')}</div><div style="font-size:8px;color:#8a8580">${k}kcal P${pv}g C${cv}g G${gv}g</div></div>`}).join('')}</div></div>`}).join('')+
+    (()=>{const shop=buildShop(sel,prof,customs);let out=`<div class=shop><h2>🛒 Lista della Spesa</h2>`;Object.entries(CAT).forEach(([ck,cl])=>{const items=shop[ck];if(!items||!items.length)return;out+=`<div class=sc><div class=sct>${cl}</div>${items.map(it=>`<div class=si><span><span class=ch></span>${it.item}</span><span style="color:#8a8580;font-size:9px">${[...new Set(it.days)].join(', ')}</span></div>`).join('')}</div>`});return out+'</div>'})()+'</body></html>';
+    const blob=new Blob([h],{type:'text/html'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='piano_settimanale.html';document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);setSav(false)},200)},100)},[sel,prof,customs]);
+
+  return(<div style={{minHeight:"100vh",background:"linear-gradient(180deg,#faf8f5,#f5f1ec)"}}>
+    <div style={{maxWidth:540,margin:"0 auto",padding:"calc(env(safe-area-inset-top,12px)+12px) 16px 120px"}}>
+      <div style={{textAlign:"center",marginBottom:20}}><div style={{fontSize:10,fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:"#b0a89e",marginBottom:4}}>Il tuo piano personalizzato</div>
+        <h1 style={{fontFamily:"'Fraunces',serif",fontSize:28,fontWeight:800,color:"#2a2520",margin:0}}>Meal Planner</h1>
+        <p style={{fontSize:13,color:"#8a8580",marginTop:4}}>~{target} kcal · {(DIST.find(d=>d.id===prof.dist)||DIST[0]).label.replace(/^[^ ]+ /,'')}</p>
+      </div>
+
+      {tab==="planner"&&<WBar cur={wTot} tar={wTar}/>}
+      <div style={{display:"flex",gap:3,marginBottom:18,background:"#fff",borderRadius:14,padding:3,border:"1.5px solid #f0ede8"}}>
+        {[{id:"planner",l:"🍽️ Piano"},{id:"shopping",l:"🛒 Spesa"},{id:"weight",l:"📊 Peso"},{id:"profile",l:"⚙️ Profilo"}].map(t=><button key={t.id} onClick={()=>{setTab(t.id);setOs(null)}} style={{flex:1,padding:"10px 0",borderRadius:11,border:"none",background:tab===t.id?"#2a2520":"transparent",color:tab===t.id?"#fff":"#8a8580",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all .25s"}}>{t.l}</button>)}
+      </div>
+
+      {tab==="planner"&&<>
+        <div style={{display:"flex",gap:5,justifyContent:"center",marginBottom:18,flexWrap:"wrap"}}>
+          {DN.map((name,i)=>{const isA=i===ad,isSc=sel[i].social;return<button key={i} onClick={()=>{setAd(i);setOs(null)}} style={{padding:"8px 12px",borderRadius:12,cursor:"pointer",border:isA?`2px solid ${DC[i]}`:"2px solid transparent",background:isA?DCL[i]:"#fff",color:isA?DC[i]:"#8a8580",fontWeight:isA?700:500,fontSize:13,transition:"all .25s",position:"relative"}}><span style={{fontSize:15}}>{isSc?"🥂":DE[i]}</span><span style={{marginLeft:3}}>{name.substring(0,3)}</span>{isSc&&<span style={{position:"absolute",top:-4,right:-4,width:10,height:10,background:"#E07B9B",borderRadius:"50%",border:"2px solid #faf8f5"}}/>}</button>})}
+        </div>
+        <div style={{background:`linear-gradient(135deg,${accent},${accent}cc)`,borderRadius:20,padding:"18px 20px",marginBottom:14,color:"#fff",boxShadow:`0 8px 30px ${accent}30`,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-10,fontSize:80,opacity:.12}}>{isSoc?"🥂":DE[ad]}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div><div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",opacity:.8}}>{isSoc?"Social Night 🎉":DN[ad]}</div><div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:800,marginTop:3}}>{DN[ad]}</div></div>
+            <button onClick={()=>togSoc(ad)} style={{padding:"8px 16px",borderRadius:12,cursor:"pointer",border:isSoc?"2px solid rgba(255,255,255,.6)":"2px solid rgba(255,255,255,.3)",background:isSoc?"rgba(255,255,255,.25)":"rgba(255,255,255,.1)",color:"#fff",fontSize:13,fontWeight:600}}>{isSoc?"✓ Social":"🥂 Social"}</button>
+          </div>
+          <div style={{display:"flex",gap:12,marginTop:12,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:700}}>{dK} kcal</span><span style={{opacity:.5}}>|</span>
+            <span style={{fontSize:12,opacity:.85}}>P {activeSlots.reduce((a,sl)=>{const m=meals[sl];return a+(m.isCustom?m.p:Math.round(m.p*slotScale(sl,prof)))},0)}g · C {activeSlots.reduce((a,sl)=>{const m=meals[sl];return a+(m.isCustom?m.c:Math.round(m.c*slotScale(sl,prof)))},0)}g · G {activeSlots.reduce((a,sl)=>{const m=meals[sl];return a+(m.isCustom?m.g:Math.round(m.g*slotScale(sl,prof)))},0)}g</span>
+          </div>
+        </div>
+        {isSoc&&<div style={{background:"linear-gradient(135deg,#FDF0F3,#FFF4E6)",borderRadius:14,padding:"12px 16px",marginBottom:14,display:"flex",gap:10,alignItems:"center",border:"1.5px solid #f0ddd5"}}><span style={{fontSize:24}}>💡</span><div style={{fontSize:13,color:"#6b6560",lineHeight:1.5}}><b style={{color:"#C4563A"}}>Buffer attivo.</b> Pasti leggeri, serata libera!</div></div>}
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {slotCfg.map(({key,opts,sk})=><MealSlot key={key+(isSoc?"s":"n")} sk={key} meal={meals[key]} accent={accent} options={opts} selId={s[sk]} onSel={v=>upd(ad,sk,v)} isOpen={os===key} onTog={()=>setOs(os===key?null:key)} sc={slotScale(key,prof)} tgtKcal={slotTargetKcal(key,prof)} custom={customs[customKey(ad,key)]} onCustomChange={newC=>updCustom(ad,key,newC)}/>)}
+        </div>
+        <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:16,flexWrap:"wrap"}}>
+          {DN.map((_,i)=>{const dki=dayKcal(sel,i,prof,customs),delta=dki-target;const c=Math.abs(delta)<=Math.round(target*.08)?"#4A7C59":delta>0?"#C4563A":"#D4A13A";
+            return<div key={i} onClick={()=>{setAd(i);setOs(null)}} style={{width:66,padding:"7px 4px",borderRadius:10,textAlign:"center",cursor:"pointer",background:i===ad?accent+"12":"#fff",border:i===ad?`1.5px solid ${accent}40`:"1.5px solid #f0ede8"}}><div style={{fontSize:9,fontWeight:600,color:"#b0a89e"}}>{DS[i]}</div><div style={{fontSize:13,fontWeight:700,color:c,fontFamily:"'Fraunces',serif",marginTop:2}}>{dki}</div><div style={{fontSize:8,color:c,fontWeight:600}}>{delta>0?`+${delta}`:delta}</div></div>})}
+        </div>
+      </>}
+      {tab==="shopping"&&<ShopList sel={sel} prof={prof} customs={customs}/>}
+      {tab==="weight"&&<WeightTracker profile={prof}/>}
+      {tab==="profile"&&<ProfilePanel profile={prof} setProfile={setProf}/>}
+    </div>
+    <div className="no-print" style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(250,248,245,.92)",backdropFilter:"blur(12px)",borderTop:"1px solid #e8e4de",padding:`12px 16px calc(env(safe-area-inset-bottom,8px)+8px)`,display:"flex",justifyContent:"center"}}>
+      <button onClick={doDownload} disabled={saving} style={{maxWidth:540,width:"100%",padding:"16px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#2a2520,#4a4540)",color:"#fff",fontSize:15,fontWeight:700,cursor:saving?"wait":"pointer",boxShadow:"0 4px 20px rgba(42,37,32,.25)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:saving?.7:1}}>
+        {saving?"⏳ Generazione...":"📥 Scarica Piano Stampabile"}
+      </button>
+    </div>
+  </div>);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+<script>if('serviceWorker' in navigator){const S=`const C='mp-v5';self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(['/'])).then(()=>self.skipWaiting())));self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));self.addEventListener('fetch',e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});`;navigator.serviceWorker.register(URL.createObjectURL(new Blob([S],{type:'application/javascript'}))).catch(()=>{})}</script>
+</body>
+</html>
